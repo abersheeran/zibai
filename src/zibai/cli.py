@@ -10,7 +10,7 @@ from functools import reduce
 import threading
 from typing import Any, Sequence
 
-from . import USIING_GEVENT
+from .logger import logger
 from .core import serve
 from .multiprocess import multiprocess
 from .wsgi_typing import WSGIApp
@@ -92,7 +92,8 @@ class Options:
     app: str
     listen: str = "127.0.0.1:9000"
     subprocess: int = 0
-    max_workers: int = 1000 if USIING_GEVENT else 10
+    no_gevent: bool = False
+    max_workers: int = 10
     watchfiles: str | None = None
 
     backlog: int | None = None
@@ -157,6 +158,12 @@ def parse_args(args: Sequence[str]) -> Options:
         required=False,
     )
     parser.add_argument(
+        "--no-gevent",
+        default=fields["no_gevent"].default,
+        action="store_true",
+        help="do not use gevent",
+    )
+    parser.add_argument(
         "--max-workers",
         "-w",
         default=fields["max_workers"].default,
@@ -216,6 +223,16 @@ def get_app(string: str) -> Any:
 
 
 def main(options: Options, is_main: bool = True) -> None:
+    if not is_main and not options.no_gevent:
+        try:
+            import gevent
+        except ImportError:
+            logger.warning("gevent not found, using threading instead")
+        else:
+            import gevent.monkey
+
+            gevent.monkey.patch_all()
+
     # Check that app is importable.
     get_app(options.app)
     # Check that bind socket can be created.

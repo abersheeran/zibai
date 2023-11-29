@@ -45,8 +45,9 @@ class MultiProcessManager:
         return process
 
     def terminate_child(self, process: SpawnProcess) -> None:
-        if process.pid is None:
+        if process.exitcode is not None:
             return
+        assert process.pid is not None
         if os.name == "nt":
             # Windows doesn't support SIGTERM.
             os.kill(process.pid, signal.CTRL_BREAK_EVENT)

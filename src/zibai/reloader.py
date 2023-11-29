@@ -12,7 +12,7 @@ from .logger import logger
 def listen_for_changes(
     watchfiles: str, callback: Callable[[], Any]
 ) -> Generator[None, None, None]:
-    def on_any_event(self, event: watchdog.events.FileSystemEvent) -> None:
+    def on_any_event(event: watchdog.events.FileSystemEvent) -> None:
         if event.event_type not in (
             watchdog.events.EVENT_TYPE_MOVED,
             watchdog.events.EVENT_TYPE_DELETED,
@@ -21,6 +21,7 @@ def listen_for_changes(
         ):
             return
 
+        logger.info("Detected file change, reloading...")
         callback()
 
     event_handler = watchdog.events.PatternMatchingEventHandler(
