@@ -43,7 +43,7 @@ python -m zibai example:create_app --call
 
 Use `--help` to see all available options.
 
-```bash
+```
 python -m zibai --help
 usage: __main__.py [-h] [--call] [--listen LISTEN] [--backlog BACKLOG] [--dualstack-ipv6] [--unix-socket-perms UNIX_SOCKET_PERMS]
                    [--subprocess SUBPROCESS] [--watchfiles WATCHFILES] [--no-gevent] [--max-workers MAX_WORKERS]
