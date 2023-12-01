@@ -26,3 +26,9 @@ reload = [
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
+
+[tool.pdm.dev-dependencies]
+benchmark = [
+    "waitress>=2.1.2",
+    "gunicorn>=21.2.0",
+]
