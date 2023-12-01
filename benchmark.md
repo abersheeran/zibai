@@ -2,11 +2,11 @@
 
 All tests are conducted on my M1 Air using python3.11.
 
-`waitress`: `waitress-serve example:app`
-`gunicorn`: `gunicorn example:app`
-`gunicron-gevent`: `gunicorn example:app -k gevent`
-`zibai`: `python -m zibai example:app --no-gevent`
-`zibai-gevent`: `python -m zibai example:app`
+- `waitress`: `waitress-serve example:app`
+- `gunicorn`: `gunicorn example:app`
+- `gunicron-gevent`: `gunicorn example:app -k gevent`
+- `zibai`: `python -m zibai example:app --no-gevent`
+- `zibai-gevent`: `python -m zibai example:app`
 
 ## `waitress`
 
