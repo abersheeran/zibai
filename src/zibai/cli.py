@@ -223,7 +223,7 @@ def get_app(string: str) -> Any:
 
 
 def main(options: Options, is_main: bool = True) -> None:
-    if options.subprocess == 0 or (not is_main and not options.no_gevent):
+    if not options.no_gevent and (options.subprocess == 0 or not is_main):
         # Single process mode or worker process with gevent.
         try:
             import gevent
