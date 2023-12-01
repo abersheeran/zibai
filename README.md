@@ -35,12 +35,19 @@ Auto reload in development:
 python -m zibai example:app --watchfiles "*.py;.env"
 ```
 
+Use app factory:
+
+```bash
+python -m zibai example:create_app --call
+```
+
 Use `--help` to see all available options.
 
 ```bash
 python -m zibai --help
-usage: __main__.py [-h] [--listen LISTEN] [--backlog BACKLOG] [--dualstack-ipv6] [--unix-socket-perms UNIX_SOCKET_PERMS] [--subprocess SUBPROCESS] [--watchfiles WATCHFILES]
-                   [--max-workers MAX_WORKERS] [--h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE] [--max-request-pre-process MAX_REQUEST_PRE_PROCESS]
+usage: __main__.py [-h] [--call] [--listen LISTEN] [--backlog BACKLOG] [--dualstack-ipv6] [--unix-socket-perms UNIX_SOCKET_PERMS]
+                   [--subprocess SUBPROCESS] [--watchfiles WATCHFILES] [--no-gevent] [--max-workers MAX_WORKERS]
+                   [--h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE] [--max-request-pre-process MAX_REQUEST_PRE_PROCESS]
                    [--before-serve BEFORE_SERVE] [--before-graceful-exit BEFORE_GRACEFUL_EXIT] [--before-died BEFORE_DIED]
                    app
 
@@ -49,6 +56,7 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
+  --call                use WSGI factory (default: False)
   --listen LISTEN, -l LISTEN
                         listen address, HOST:PORT, unix:PATH (default: 127.0.0.1:9000)
   --backlog BACKLOG     listen backlog (default: None)
@@ -59,8 +67,9 @@ options:
                         number of subprocesses (default: 0)
   --watchfiles WATCHFILES
                         watch files for changes and restart workers (default: None)
+  --no-gevent           do not use gevent (default: False)
   --max-workers MAX_WORKERS, -w MAX_WORKERS
-                        maximum number of threads or greenlets to use for handling requests (default: 1000)
+                        maximum number of threads or greenlets to use for handling requests (default: 10)
   --h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE
                         maximum number of bytes in an incomplete HTTP event (default: None)
   --max-request-pre-process MAX_REQUEST_PRE_PROCESS
@@ -103,18 +112,6 @@ from zibai.cli import Options, main
 
 options = Options(app="example:app")
 main(options)
-```
-
-Maybe you like to get the app in factory mode, just do this:
-
-```python
-import sys
-import zibai.cli
-
-zibai.cli.get_app = lambda string: zibai.cli.import_from_string(string)()
-
-options = zibai.cli.parse_args(sys.argv[1:])
-zibai.cli.main(options)
 ```
 
 ### Advanced usage

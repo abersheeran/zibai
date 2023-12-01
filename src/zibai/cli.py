@@ -90,6 +90,7 @@ class Options:
     """
 
     app: str
+    call: bool = False
     listen: str = "127.0.0.1:9000"
     subprocess: int = 0
     no_gevent: bool = False
@@ -122,6 +123,12 @@ def parse_args(args: Sequence[str]) -> Options:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument("app", help="WSGI app")
+    parser.add_argument(
+        "--call",
+        help="use WSGI factory",
+        default=fields["call"].default,
+        action="store_true",
+    )
     parser.add_argument(
         "--listen",
         "-l",
@@ -215,11 +222,14 @@ def parse_args(args: Sequence[str]) -> Options:
 spawn = multiprocessing.get_context("spawn")
 
 
-def get_app(string: str) -> Any:
+def get_app(string: str, use_factory: bool = False) -> Any:
     """
     Get WSGI app from import string.
     """
-    return import_from_string(string)
+    app = import_from_string(string)
+    if use_factory:
+        app = app()
+    return app
 
 
 def main(options: Options, is_main: bool = True) -> None:
@@ -236,7 +246,7 @@ def main(options: Options, is_main: bool = True) -> None:
             logger.info("Using gevent for worker pool")
 
     # Check that app is importable.
-    get_app(options.app)
+    get_app(options.app, use_factory=options.call)
     # Check that bind socket can be created.
     create_bind_socket(
         options.listen,
