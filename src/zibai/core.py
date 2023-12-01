@@ -18,7 +18,10 @@ def handle_connection(
 ) -> None:
     debug_logger.debug("Handling connection from %s:%d", *address[:2])
     with s:
-        http11_protocol(app, s, graceful_exit)
+        try:
+            http11_protocol(app, s, graceful_exit)
+        except ConnectionError:
+            pass  # client closed connection, nothing to do
 
 
 def serve(
