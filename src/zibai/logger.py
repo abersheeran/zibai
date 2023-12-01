@@ -1,8 +1,15 @@
 import logging
 
+# Set default logging format.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
 logger = logging.getLogger("zibai")
+
 debug_logger = logging.getLogger("zibai.debug")
+debug_logger.setLevel(logging.INFO)  # Disable debug logging by default.
+
 access_logger = logging.getLogger("zibai.access")
+
 error_logger = logging.getLogger("zibai.error")
 
 
