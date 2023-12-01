@@ -1,6 +1,7 @@
 import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.getLogger("zibai.access").setLevel(logging.WARNING)
 
 
 def app(environ, start_response):
@@ -13,13 +14,6 @@ def app(environ, start_response):
 if __name__ == "__main__":
     import sys
     from zibai.cli import parse_args, main
-    from zibai.logger import access_logger
-
-    handler = logging.StreamHandler()
-    handler.formatter = logging.Formatter(
-        "%(asctime)s [%(REMOTE_ADDR)s] %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S"
-    )
-    access_logger.addHandler(handler)
 
     options = parse_args(["example:app"] + sys.argv[1:])
     main(options)
