@@ -13,7 +13,7 @@ access_logger = logging.getLogger("zibai.access")
 error_logger = logging.getLogger("zibai.error")
 
 
-def log_http(environ, status_code):
+def log_http(environ, status_code) -> None:
     if status_code >= 500:
         error_logger.error(
             '"%s %s %s" %s',
@@ -22,6 +22,7 @@ def log_http(environ, status_code):
             environ["SERVER_PROTOCOL"],
             status_code,
             extra=environ,
+            exc_info=True,
         )
     else:
         access_logger.info(
