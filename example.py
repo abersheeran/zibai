@@ -1,7 +1,6 @@
 import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logging.getLogger("zibai.access").setLevel(logging.WARNING)
 
 
 def app(environ, start_response):

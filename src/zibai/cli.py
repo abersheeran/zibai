@@ -2,6 +2,7 @@ import argparse
 import dataclasses
 import importlib
 import ipaddress
+import logging
 import multiprocessing
 import os
 import signal
@@ -108,6 +109,9 @@ class Options:
     before_graceful_exit: str | None = None
     before_died: str | None = None
 
+    # Logging
+    no_access_log: bool = False
+
     def __post_init__(self) -> None:
         """
         Check options. Do not do any side effects here.
@@ -204,6 +208,12 @@ def parse_args(args: Sequence[str]) -> Options:
         help="callback to run before exiting",
         required=False,
     )
+    parser.add_argument(
+        "--no-access-log",
+        default=fields["no_access_log"].default,
+        action="store_true",
+        help="disable access log",
+    )
     options = parser.parse_args(args)
 
     # Parse unix_socket_perms as an octal integer.
@@ -244,6 +254,9 @@ def main(options: Options, *, is_main: bool = True) -> None:
 
             gevent.monkey.patch_all()
             logger.info("Using gevent for worker pool")
+
+    if options.no_access_log:
+        logging.getLogger("zibai.access").setLevel(logging.WARNING)
 
     # Check that app is importable.
     get_app(options.app, use_factory=options.call)
