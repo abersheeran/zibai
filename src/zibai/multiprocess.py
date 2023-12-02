@@ -78,6 +78,7 @@ class Process:
         assert self.process.pid is not None
         if os.name == "nt":
             # Windows doesn't support SIGTERM.
+            # So send SIGBREAK, and then in process raise SIGTERM.
             os.kill(self.process.pid, signal.CTRL_BREAK_EVENT)
         else:
             os.kill(self.process.pid, signal.SIGTERM)
@@ -85,6 +86,11 @@ class Process:
 
         self.parent_conn.close()
         self.child_conn.close()
+
+    def kill(self) -> None:
+        # In Windows, the method will call `TerminateProcess` to kill the process.
+        # In Unix, the method will send SIGKILL to the process.
+        self.process.kill()
 
     def join(self) -> None:
         logger.info("Waiting for child process [{}]".format(self.process.pid))
@@ -104,18 +110,14 @@ class MultiProcessManager:
         for sig in UNIX_SIGNALS:
             signal.signal(sig, lambda sig, frame: self.signal_queue.append(sig))
         self.should_exit = threading.Event()
-        for sig in (
-            signal.SIGINT,  # Sent by Ctrl+C.
-            signal.SIGTERM  # Sent by `kill <pid>`. Not sent on Windows.
-            if os.name != "nt"
-            else signal.SIGBREAK,  # Sent by `Ctrl+Break` on Windows.
-        ):
-            signal.signal(
-                sig,
-                lambda sig, frame: (
-                    self.should_exit.set() if not self.should_exit.is_set() else exit(0)
-                ),
-            )
+
+        # Sent by Ctrl+C.
+        signal.signal(signal.SIGINT, lambda sig, frame: self.handle_int())
+        # Sent by `kill <pid>`. Not sent on Windows.
+        signal.signal(signal.SIGTERM, lambda sig, frame: self.handle_term())
+        if os.name == "nt":
+            # Sent by `Ctrl+Break` on Windows.
+            signal.signal(signal.SIGBREAK, lambda sig, frame: self.handle_break())
 
     def init_processes(self) -> None:
         for _ in range(self.processes_num):
@@ -126,6 +128,10 @@ class MultiProcessManager:
     def terminate_all(self) -> None:
         for process in self.processes:
             process.terminate()
+
+    def kill_all(self) -> None:
+        for process in self.processes:
+            process.kill()
 
     def join_all(self) -> None:
         for process in self.processes:
@@ -175,6 +181,27 @@ class MultiProcessManager:
                 sig_handler()
             else:
                 logger.info(f"Received signal [{sig_name}], but nothing to do")
+
+    def handle_int(self) -> None:
+        logger.info("Received SIGINT, killing all processes")
+        self.should_exit.set()
+        self.kill_all()
+        self.join_all()
+        exit(0)
+
+    def handle_term(self) -> None:
+        logger.info("Received SIGTERM, exiting")
+        if not self.should_exit.is_set():
+            self.should_exit.set()
+        else:
+            exit(0)
+
+    def handle_break(self) -> None:
+        logger.info("Received SIGBREAK, exiting")
+        if not self.should_exit.is_set():
+            self.should_exit.set()
+        else:
+            exit(0)
 
     def handle_hup(self) -> None:
         logger.info("Received SIGHUP, restarting processes")

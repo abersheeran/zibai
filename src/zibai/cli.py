@@ -322,13 +322,13 @@ def main(options: Options, *, is_main: bool = True) -> None:
 
     graceful_exit = threading.Event()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(
-            sig,
-            lambda sig, frame: (
-                graceful_exit.set() if not graceful_exit.is_set() else exit(0)
-            ),
-        )
+    signal.signal(signal.SIGINT, lambda sig, frame: exit(0))
+    signal.signal(
+        signal.SIGTERM,
+        lambda sig, frame: (
+            graceful_exit.set() if not graceful_exit.is_set() else exit(0)
+        ),
+    )
 
     serve(
         app=application,
