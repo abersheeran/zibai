@@ -1,6 +1,6 @@
 [project]
 name = "zibai-server"
-version = "0.3.0"
+version = "0.4.0"
 description = "A modern Python WSGI server."
 authors = [
     {name = "abersheeran", email = "me@abersheeran.com"},
