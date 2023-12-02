@@ -1,5 +1,4 @@
 import dataclasses
-import os
 import socket
 import sys
 import threading
@@ -7,7 +6,7 @@ from typing import Any, Callable
 
 import h11
 
-from .utils import Input, unicode_to_wsgi
+from .utils import Input
 from .logger import debug_logger, log_http, error_logger
 from .wsgi_typing import Environ, ExceptionInfo, WSGIApp
 
@@ -24,6 +23,9 @@ class H11Protocol:
     s: socket.socket
     peername: tuple[str, int]
     sockname: tuple[str, int]
+
+    url_scheme: str = "http"
+    script_name: str = ""
 
     # State variables
     response_buffer: tuple[str, list[tuple[str, str]]] | None = None
@@ -89,23 +91,32 @@ class H11Protocol:
         event = self.get_next_event()
         match event:
             case h11.Request(method, headers, target, http_version):
-                if b"?" in target:
-                    path, query = target.split(b"?", 1)
+                request_uri = target.decode("latin-1")
+                if "?" in request_uri:
+                    path, query = request_uri.split("?", 1)
                 else:
-                    path, query = target, b""
-
+                    path, query = request_uri, ""
                 server_name, server_port = self.sockname
+
+                script_name = self.script_name
+                if path == script_name:
+                    path = ""
+                else:
+                    url_prefix_with_trailing_slash = script_name + "/"
+                    if path.startswith(url_prefix_with_trailing_slash):
+                        path = path[len(script_name) :]
 
                 environ: Environ = {
                     "REQUEST_METHOD": method.decode("ascii"),
-                    "SCRIPT_NAME": unicode_to_wsgi(os.environ.get("SCRIPT_NAME", "")),
+                    "SCRIPT_NAME": script_name,
                     "SERVER_NAME": server_name,
                     "SERVER_PORT": str(server_port),
-                    "PATH_INFO": path.decode("latin1"),
-                    "QUERY_STRING": query.decode("ascii"),
+                    "REQUEST_URI": request_uri,
+                    "PATH_INFO": path,
+                    "QUERY_STRING": query,
                     "SERVER_PROTOCOL": f"HTTP/{http_version.decode('ascii')}",
                     "wsgi.version": (1, 0),
-                    "wsgi.url_scheme": "http",
+                    "wsgi.url_scheme": self.url_scheme,
                     "wsgi.input": Input(self.read_request_body),
                     "wsgi.errors": sys.stderr,
                     "wsgi.multithread": True,
@@ -125,8 +136,8 @@ class H11Protocol:
                         ] = value.decode("latin1")
 
                 remote_name, remote_port = self.peername
-                environ["REMOTE_ADDR"] = remote_name  # type: ignore
-                environ["REMOTE_PORT"] = str(remote_port)  # type: ignore
+                environ["REMOTE_ADDR"] = remote_name
+                environ["REMOTE_PORT"] = str(remote_port)
 
                 return environ
             case _:
@@ -207,6 +218,9 @@ def http11_protocol(
     app: WSGIApp,
     sock: socket.socket,
     graceful_exit: threading.Event,
+    *,
+    url_scheme: str = "http",
+    script_name: str = "",
 ) -> None:
     peername = sock.getpeername()[:2]
     if isinstance(peername, str):
@@ -218,7 +232,14 @@ def http11_protocol(
     h11_connection = h11.Connection(
         our_role=h11.SERVER, max_incomplete_event_size=MAX_INCOMPLETE_EVENT_SIZE
     )
-    h = H11Protocol(c=h11_connection, s=sock, peername=peername, sockname=sockname)
+    h = H11Protocol(
+        c=h11_connection,
+        s=sock,
+        peername=peername,
+        sockname=sockname,
+        url_scheme=url_scheme,
+        script_name=script_name,
+    )
     while not graceful_exit.is_set():
         try:
             h.call_wsgi(app)

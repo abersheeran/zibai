@@ -1,11 +1,12 @@
 import atexit
+import os
 import socket
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from typing import Any, Callable
 
+from .utils import unicode_to_wsgi
 from .wsgi_typing import WSGIApp
-
 from .h11 import http11_protocol
 from .logger import logger, debug_logger
 
@@ -15,11 +16,20 @@ def handle_connection(
     s: socket.socket,
     address: tuple[str, int],
     graceful_exit: threading.Event,
+    *,
+    url_scheme: str = "http",
+    script_name: str = "",
 ) -> None:
     debug_logger.debug("Handling connection from %s:%d", *address[:2])
     with s:
         try:
-            http11_protocol(app, s, graceful_exit)
+            http11_protocol(
+                app,
+                s,
+                graceful_exit,
+                url_scheme=url_scheme,
+                script_name=script_name,
+            )
         except ConnectionError:
             pass  # client closed connection, nothing to do
 
@@ -31,6 +41,8 @@ def serve(
     backlog: int | None,
     max_workers: int,
     graceful_exit: threading.Event,
+    url_scheme: str = "http",
+    script_name: str | None = None,
     before_serve_hook: Callable[[], None] = lambda: None,
     before_graceful_exit_hook: Callable[[], None] = lambda: None,
     before_died_hook: Callable[[], None] = lambda: None,
@@ -38,6 +50,10 @@ def serve(
     """
     Serve a WSGI application.
     """
+    if script_name is None:
+        # If script_name is not specified, use the environment variable.
+        script_name = unicode_to_wsgi(os.environ.get("SCRIPT_NAME", ""))
+
     listen_address = bind_socket.getsockname()[:2]
 
     def _handle_exit_event() -> None:
@@ -72,7 +88,13 @@ def serve(
             else:
                 debug_logger.debug("Accepted connection from %s:%d", *address[:2])
                 future = executor.submit(
-                    handle_connection, app, connection, address, graceful_exit
+                    handle_connection,
+                    app,
+                    connection,
+                    address,
+                    graceful_exit,
+                    url_scheme=url_scheme,
+                    script_name=script_name,
                 )
                 # raise exception in main thread if exception in threadpool
                 future.add_done_callback(lambda future: future.result())

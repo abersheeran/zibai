@@ -98,6 +98,10 @@ class Options:
     max_workers: int = 10
     watchfiles: str | None = None
 
+    # WSGI environment settings
+    url_scheme: str = "http"
+    url_prefix: str | None = None
+
     backlog: int | None = None
     dualstack_ipv6: bool = False
     unix_socket_perms: int = 0o600
@@ -126,6 +130,7 @@ def parse_args(args: Sequence[str]) -> Options:
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+    # Please keep the order of arguments like `Options`.
     parser.add_argument("app", help="WSGI app")
     parser.add_argument(
         "--call",
@@ -138,6 +143,42 @@ def parse_args(args: Sequence[str]) -> Options:
         "-l",
         default=fields["listen"].default,
         help="listen address, HOST:PORT, unix:PATH",
+    )
+    parser.add_argument(
+        "--subprocess",
+        "-p",
+        default=fields["subprocess"].default,
+        type=int,
+        help="number of subprocesses",
+    )
+    parser.add_argument(
+        "--no-gevent",
+        default=fields["no_gevent"].default,
+        action="store_true",
+        help="do not use gevent",
+    )
+    parser.add_argument(
+        "--max-workers",
+        "-w",
+        default=fields["max_workers"].default,
+        type=int,
+        help="maximum number of threads or greenlets to use for handling requests",
+    )
+    parser.add_argument(
+        "--watchfiles",
+        help="watch files for changes and restart workers",
+        required=False,
+    )
+    parser.add_argument(
+        "--url-scheme",
+        default=fields["url_scheme"].default,
+        help="url scheme; will be passed to WSGI app as wsgi.url_scheme",
+    )
+    parser.add_argument(
+        "--url-prefix",
+        help="url prefix; will be passed to WSGI app as SCRIPT_NAME, "
+        "if not specified, use environment variable SCRIPT_NAME",
+        required=False,
     )
     parser.add_argument(
         "--backlog",
@@ -155,31 +196,6 @@ def parse_args(args: Sequence[str]) -> Options:
         "--unix-socket-perms",
         default="600",
         help="unix socket permissions",
-    )
-    parser.add_argument(
-        "--subprocess",
-        "-p",
-        default=fields["subprocess"].default,
-        type=int,
-        help="number of subprocesses",
-    )
-    parser.add_argument(
-        "--watchfiles",
-        help="watch files for changes and restart workers",
-        required=False,
-    )
-    parser.add_argument(
-        "--no-gevent",
-        default=fields["no_gevent"].default,
-        action="store_true",
-        help="do not use gevent",
-    )
-    parser.add_argument(
-        "--max-workers",
-        "-w",
-        default=fields["max_workers"].default,
-        type=int,
-        help="maximum number of threads or greenlets to use for handling requests",
     )
     parser.add_argument(
         "--h11-max-incomplete-event-size",

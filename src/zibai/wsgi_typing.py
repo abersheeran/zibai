@@ -40,6 +40,9 @@ CGIRequiredDefined = TypedDict(
 CGIOptionalDefined = TypedDict(
     "CGIOptionalDefined",
     {
+        "REQUEST_URI": str,
+        "REMOTE_ADDR": str,
+        "REMOTE_PORT": str,
         # The initial portion of the request URL’s “path” that corresponds to the
         # application object, so that the application knows its virtual “location”.
         # This may be an empty string, if the application corresponds to the “root”
