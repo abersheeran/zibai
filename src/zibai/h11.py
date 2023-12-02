@@ -82,6 +82,8 @@ class H11Protocol:
         elif self.response_buffer is not None:
             raise RuntimeError("start_response() was already called")
 
+        headers.append(("Server", "Zî Bái"))  # Yes, it's valid http header.
+
         status_code, _ = status.split(" ", 1)
         self.response_buffer = (status_code, headers)
 
