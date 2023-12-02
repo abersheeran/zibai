@@ -12,7 +12,7 @@ from typing import Any, Sequence
 
 from .logger import logger
 from .core import serve
-from .multiprocess import multiprocess
+from .multiprocess import multiprocess, ProcessParameters
 from .wsgi_typing import WSGIApp
 
 
@@ -232,7 +232,7 @@ def get_app(string: str, use_factory: bool = False) -> Any:
     return app
 
 
-def main(options: Options, is_main: bool = True) -> None:
+def main(options: Options, *, is_main: bool = True) -> None:
     if not options.no_gevent and (options.subprocess == 0 or not is_main):
         # Single process mode or worker process with gevent.
         try:
@@ -257,7 +257,7 @@ def main(options: Options, is_main: bool = True) -> None:
     if is_main and options.subprocess > 0:
         multiprocess(
             options.subprocess,
-            lambda: spawn.Process(target=main, args=(options, False), daemon=True),
+            ProcessParameters(main, options, is_main=False),
             options.watchfiles,
         )
         return
@@ -293,12 +293,7 @@ def main(options: Options, is_main: bool = True) -> None:
 
     graceful_exit = threading.Event()
 
-    for sig in (
-        signal.SIGINT,  # Sent by Ctrl+C.
-        signal.SIGTERM  # Sent by `kill <pid>`. Not sent on Windows.
-        if os.name != "nt"
-        else signal.SIGBREAK,  # Sent by `Ctrl+Break` on Windows.
-    ):
+    for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(
             sig,
             lambda sig, frame: (

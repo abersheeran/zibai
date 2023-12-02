@@ -2,8 +2,9 @@ import os
 import signal
 import threading
 from contextlib import nullcontext
+from multiprocessing import Pipe
 from multiprocessing.context import SpawnProcess
-from typing import Callable
+from typing import Any, Callable, ParamSpec
 
 from .logger import logger
 
@@ -13,12 +14,92 @@ UNIX_SIGNALS = {
     if hasattr(signal, f"SIG{x}")
 }
 
+P = ParamSpec("P")
+
+
+class ProcessParameters:
+    def __init__(
+        self,
+        f: Callable[P, Any],
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> None:
+        self.f = f
+        self.args = args
+        self.kwargs = kwargs
+
+
+class Process:
+    def __init__(self, parameters: ProcessParameters) -> None:
+        self.parameters = parameters
+        self.parent_conn, self.child_conn = Pipe()
+        self.process = SpawnProcess(target=self.target, daemon=True)
+
+    def ping(self, timeout: float = 5) -> bool:
+        self.parent_conn.send(b"ping")
+        if self.parent_conn.poll(timeout):
+            self.parent_conn.recv()
+            return True
+        return False
+
+    def pong(self) -> None:
+        self.child_conn.recv()
+        self.child_conn.send(b"pong")
+
+    def always_pong(self) -> None:
+        while True:
+            self.pong()
+
+    def target(self) -> Any:
+        if os.name == "nt":
+            # Windows doesn't support SIGTERM, so we use SIGBREAK instead.
+            # And then we raise SIGTERM when SIGBREAK is received.
+            # https://learn.microsoft.com/zh-cn/cpp/c-runtime-library/reference/signal?view=msvc-170
+            signal.signal(
+                signal.SIGBREAK, lambda sig, frame: signal.raise_signal(signal.SIGTERM)
+            )
+
+        threading.Thread(target=self.always_pong, daemon=True).start()
+        return self.parameters.f(*self.parameters.args, **self.parameters.kwargs)
+
+    def is_alive(self, timeout: float = 5) -> bool:
+        if not self.process.is_alive():
+            return False
+
+        return self.ping(timeout)
+
+    def start(self) -> None:
+        self.process.start()
+        logger.info("Started child process [{}]".format(self.process.pid))
+
+    def terminate(self) -> None:
+        if self.process.exitcode is not None:
+            return
+        assert self.process.pid is not None
+        if os.name == "nt":
+            # Windows doesn't support SIGTERM.
+            os.kill(self.process.pid, signal.CTRL_BREAK_EVENT)
+        else:
+            os.kill(self.process.pid, signal.SIGTERM)
+        logger.info("Terminated child process [{}]".format(self.process.pid))
+
+        self.parent_conn.close()
+        self.child_conn.close()
+
+    def join(self) -> None:
+        logger.info("Waiting for child process [{}]".format(self.process.pid))
+        self.process.join()
+
+    @property
+    def pid(self) -> int | None:
+        return self.process.pid
+
 
 class MultiProcessManager:
-    def __init__(self, processes_num: int, create_process: Callable[[], SpawnProcess]):
+    def __init__(self, processes_num: int, process_parameters: ProcessParameters):
         self.processes_num = processes_num
-        self.create_process = create_process
-        self.processes: list[SpawnProcess] = []
+        self.process_parameters = process_parameters
+        self.processes: list[Process] = []
         self.signal_queue: list[int] = []
         for sig in UNIX_SIGNALS:
             signal.signal(sig, lambda sig, frame: self.signal_queue.append(sig))
@@ -36,43 +117,27 @@ class MultiProcessManager:
                 ),
             )
 
-    def create_child(self) -> SpawnProcess:
-        process = self.create_process()
-        process.daemon = True
-        self.processes.append(process)
-        process.start()
-        logger.info("Started child process [{}]".format(process.pid))
-        return process
-
-    def terminate_child(self, process: SpawnProcess) -> None:
-        if process.exitcode is not None:
-            return
-        assert process.pid is not None
-        if os.name == "nt":
-            # Windows doesn't support SIGTERM.
-            os.kill(process.pid, signal.CTRL_BREAK_EVENT)
-        else:
-            os.kill(process.pid, signal.SIGTERM)
-        logger.info("Terminated child process [{}]".format(process.pid))
-
     def init_processes(self) -> None:
         for _ in range(self.processes_num):
-            self.create_child()
+            process = Process(self.process_parameters)
+            process.start()
+            self.processes.append(process)
 
     def terminate_all(self) -> None:
         for process in self.processes:
-            self.terminate_child(process)
+            process.terminate()
 
     def join_all(self) -> None:
         for process in self.processes:
-            logger.info("Waiting for child process [{}]".format(process.pid))
             process.join()
 
     def restart_all(self) -> None:
         for idx, process in enumerate(tuple(self.processes)):
-            self.terminate_child(process)
+            process.terminate()
             del self.processes[idx]
-            self.create_child()
+            process = Process(self.process_parameters)
+            process.start()
+            self.processes.append(process)
 
     def mainloop(self) -> None:
         logger.info("Started parent process [{}]".format(os.getpid()))
@@ -93,10 +158,13 @@ class MultiProcessManager:
             if process.is_alive():
                 continue
 
-            self.terminate_child(process)
+            process.terminate()
+            process.join()
             logger.info("Child process [{}] died".format(process.pid))
             del self.processes[idx]
-            self.create_child()
+            process = Process(self.process_parameters)
+            process.start()
+            self.processes.append(process)
 
     def handle_signals(self) -> None:
         for sig in tuple(self.signal_queue):
@@ -106,7 +174,7 @@ class MultiProcessManager:
             if sig_handler is not None:
                 sig_handler()
             else:
-                logger.info("Received signal {}".format(sig_name))
+                logger.info(f"Received signal [{sig_name}], but nothing to do")
 
     def handle_hup(self) -> None:
         logger.info("Received SIGHUP, restarting processes")
@@ -115,7 +183,9 @@ class MultiProcessManager:
     def handle_ttin(self) -> None:
         logger.info("Received SIGTTIN, increasing processes")
         self.processes_num += 1
-        self.create_child()
+        process = Process(self.process_parameters)
+        process.start()
+        self.processes.append(process)
 
     def handle_ttou(self) -> None:
         logger.info("Received SIGTTOU, decreasing processes")
@@ -123,15 +193,17 @@ class MultiProcessManager:
             logger.info("Cannot decrease processes any more")
             return
         self.processes_num -= 1
-        self.terminate_child(self.processes.pop())
+        process = self.processes.pop()
+        process.terminate()
+        process.join()
 
 
 def multiprocess(
     processes_num: int,
-    create_process: Callable[[], SpawnProcess],
+    process_parameters: ProcessParameters,
     watchfiles: str | None,
 ) -> None:
-    processes_manager = MultiProcessManager(processes_num, create_process)
+    processes_manager = MultiProcessManager(processes_num, process_parameters)
 
     if watchfiles is not None:
         from .reloader import listen_for_changes
