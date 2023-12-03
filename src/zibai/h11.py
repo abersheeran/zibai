@@ -28,7 +28,7 @@ class H11Protocol:
     script_name: str = ""
 
     # State variables
-    response_buffer: tuple[str, list[tuple[str, str]]] | None = None
+    response_buffer: tuple[int, list[tuple[bytes, bytes]]] | None = None
     header_sent: bool = False
 
     def get_next_event(self):
@@ -82,10 +82,22 @@ class H11Protocol:
         elif self.response_buffer is not None:
             raise RuntimeError("start_response() was already called")
 
-        headers.append(("Server", "Zî Bái"))  # Yes, it's valid http header.
-
         status_code, _ = status.split(" ", 1)
-        self.response_buffer = (status_code, headers)
+        if status_code.isdigit():
+            status_code = int(status_code)
+        else:
+            raise RuntimeError(f"Invalid status: {status}")
+
+        self.response_buffer = (
+            status_code,
+            [
+                *(
+                    (name.encode("latin1"), value.encode("latin1"))
+                    for name, value in headers
+                ),
+                (b"Server", "Zî Bái".encode("latin1")),
+            ],
+        )
 
         return self.s.sendall
 
@@ -173,7 +185,7 @@ class H11Protocol:
             if self.response_buffer is None:
                 raise RuntimeError("start_response() was not called")
 
-            status_code = int(self.response_buffer[0].split(" ", 1)[0])
+            status_code = self.response_buffer[0]
             self.send_with_event(
                 h11.Response(status_code=status_code, headers=self.response_buffer[1])
             )
