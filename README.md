@@ -44,11 +44,11 @@ python -m zibai example:create_app --call
 Use `--help` to see all available options.
 
 ```
-python -m zibai --help
-usage: __main__.py [-h] [--call] [--listen LISTEN] [--backlog BACKLOG] [--dualstack-ipv6] [--unix-socket-perms UNIX_SOCKET_PERMS]
-                   [--subprocess SUBPROCESS] [--watchfiles WATCHFILES] [--no-gevent] [--max-workers MAX_WORKERS]
-                   [--h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE] [--max-request-pre-process MAX_REQUEST_PRE_PROCESS]
-                   [--before-serve BEFORE_SERVE] [--before-graceful-exit BEFORE_GRACEFUL_EXIT] [--before-died BEFORE_DIED]
+usage: __main__.py [-h] [--call] [--listen LISTEN] [--subprocess SUBPROCESS] [--no-gevent] [--max-workers MAX_WORKERS] [--watchfiles WATCHFILES]
+                   [--url-scheme URL_SCHEME] [--url-prefix URL_PREFIX] [--backlog BACKLOG] [--dualstack-ipv6]
+                   [--unix-socket-perms UNIX_SOCKET_PERMS] [--h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE]
+                   [--max-request-pre-process MAX_REQUEST_PRE_PROCESS] [--before-serve BEFORE_SERVE]
+                   [--before-graceful-exit BEFORE_GRACEFUL_EXIT] [--before-died BEFORE_DIED] [--no-access-log]
                    app
 
 positional arguments:
@@ -59,17 +59,22 @@ options:
   --call                use WSGI factory (default: False)
   --listen LISTEN, -l LISTEN
                         listen address, HOST:PORT, unix:PATH (default: 127.0.0.1:9000)
+  --subprocess SUBPROCESS, -p SUBPROCESS
+                        number of subprocesses (default: 0)
+  --no-gevent           do not use gevent (default: False)
+  --max-workers MAX_WORKERS, -w MAX_WORKERS
+                        maximum number of threads or greenlets to use for handling requests (default: 10)
+  --watchfiles WATCHFILES
+                        watch files for changes and restart workers (default: None)
+  --url-scheme URL_SCHEME
+                        url scheme; will be passed to WSGI app as wsgi.url_scheme (default: http)
+  --url-prefix URL_PREFIX
+                        url prefix; will be passed to WSGI app as SCRIPT_NAME, if not specified, use environment variable SCRIPT_NAME (default:
+                        None)
   --backlog BACKLOG     listen backlog (default: None)
   --dualstack-ipv6      enable dualstack ipv6 (default: False)
   --unix-socket-perms UNIX_SOCKET_PERMS
                         unix socket permissions (default: 600)
-  --subprocess SUBPROCESS, -p SUBPROCESS
-                        number of subprocesses (default: 0)
-  --watchfiles WATCHFILES
-                        watch files for changes and restart workers (default: None)
-  --no-gevent           do not use gevent (default: False)
-  --max-workers MAX_WORKERS, -w MAX_WORKERS
-                        maximum number of threads or greenlets to use for handling requests (default: 10)
   --h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE
                         maximum number of bytes in an incomplete HTTP event (default: None)
   --max-request-pre-process MAX_REQUEST_PRE_PROCESS
@@ -80,6 +85,7 @@ options:
                         callback to run before graceful exit (default: None)
   --before-died BEFORE_DIED
                         callback to run before exiting (default: None)
+  --no-access-log       disable access log (default: False)
 ```
 
 ## Use programmatically
@@ -179,3 +185,17 @@ handler.formatter = logging.Formatter(
 )
 access_logger.addHandler(handler)
 ```
+
+## Signals
+
+Zī Bái will handle the following signals:
+
+- `SIGINT`: Trigger quick exit, `finally` or `atexit` maybe not be executed. If subprocess is enabled, the subprocess will also exit quickly.
+- `SIGTERM`: Trigger graceful exit. If subprocess is enabled, then the main process will wait for the subprocess to exit gracefully.
+
+There are also some signals that will only be processed by the main process when subprocess is enabled.
+
+- `SIGBREAK`: Only available on Windows. Trigger graceful exit.
+- `SIGHUP`: Work processes are graceful restarted one after another. If you update the code, the new worker process will use the new code.
+- `SIGTTIN`: Increase the number of worker processes by one.
+- `SIGTTOU`: Decrease the number of worker processes by one.
