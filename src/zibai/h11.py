@@ -110,7 +110,9 @@ class H11Protocol:
                     path, query = request_uri.split("?", 1)
                 else:
                     path, query = request_uri, ""
+
                 server_name, server_port = self.sockname
+                remote_name, remote_port = self.peername
 
                 script_name = self.script_name
                 if path == script_name:
@@ -125,6 +127,8 @@ class H11Protocol:
                     "SCRIPT_NAME": script_name,
                     "SERVER_NAME": server_name,
                     "SERVER_PORT": str(server_port),
+                    "REMOTE_ADDR": remote_name,
+                    "REMOTE_PORT": str(remote_port),
                     "REQUEST_URI": request_uri,
                     "PATH_INFO": path,
                     "QUERY_STRING": query,
@@ -140,20 +144,19 @@ class H11Protocol:
 
                 for name, value in headers:
                     name = name.decode("latin1")
+                    value = value.decode("latin1")
                     if name == "content-type":
-                        environ["CONTENT_TYPE"] = value.decode("latin1")
+                        environ["CONTENT_TYPE"] = value
                     elif name == "content-length":
-                        environ["CONTENT_LENGTH"] = value.decode("latin1")
+                        environ["CONTENT_LENGTH"] = value
                     else:
-                        environ[
-                            "HTTP_" + name.upper().replace("-", "_")
-                        ] = value.decode("latin1")
+                        http_name = "HTTP_" + name.upper().replace("-", "_")
+                        if http_name not in environ:
+                            environ[http_name] = value
+                        else:
+                            environ[http_name] += "," + value
 
-                remote_name, remote_port = self.peername
-                environ["REMOTE_ADDR"] = remote_name
-                environ["REMOTE_PORT"] = str(remote_port)
-
-                return environ
+                return environ  # type: ignore
             case _:
                 raise RuntimeError(f"Unexpected event: {event}")
 
