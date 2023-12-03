@@ -17,6 +17,54 @@ from .multiprocess import multiprocess, ProcessParameters
 from .wsgi_typing import WSGIApp
 
 
+@dataclasses.dataclass
+class Options:
+    """
+    Keep `Options` can be passed between processes.
+    """
+
+    app: str
+    call: bool = False
+    listen: str = "127.0.0.1:9000"
+    subprocess: int = 0
+    no_gevent: bool = False
+    max_workers: int = 10
+    watchfiles: str | None = None
+
+    # WSGI environment settings
+    url_scheme: str = "http"
+    url_prefix: str | None = None
+
+    backlog: int | None = None
+    dualstack_ipv6: bool = False
+    unix_socket_perms: int = 0o600
+    h11_max_incomplete_event_size: int | None = None
+    max_request_pre_process: int | None = None
+
+    # Server callback hooks
+    before_serve: str | None = None
+    before_graceful_exit: str | None = None
+    before_died: str | None = None
+
+    # Logging
+    no_access_log: bool = False
+
+    def __post_init__(self) -> None:
+        """
+        Check options. Do not do any side effects here.
+        """
+        if self.watchfiles is not None and self.subprocess <= 0:
+            raise ValueError("Cannot watch files without subprocesses")
+
+    @classmethod
+    def default_value(cls, field_name: str) -> Any:
+        fields = {field.name: field for field in dataclasses.fields(Options)}
+        default = fields[field_name].default
+        if default is dataclasses.MISSING:
+            raise ValueError(f"Field {field_name} has no default value")
+        return default
+
+
 def import_from_string(import_str: str) -> Any:
     module_str, _, attrs_str = import_str.partition(":")
     if not module_str or not attrs_str:
@@ -30,8 +78,8 @@ def import_from_string(import_str: str) -> Any:
 def create_bind_socket(
     value: str,
     *,
-    uds_perms: int,
-    dualstack_ipv6: bool,
+    uds_perms: int = Options.default_value("unix_socket_perms"),
+    dualstack_ipv6: bool = Options.default_value("dualstack_ipv6"),
     socket_type: int = socket.SOCK_STREAM,
 ) -> socket.socket:
     if value.startswith("unix:"):
@@ -84,49 +132,7 @@ def create_bind_socket(
     return sock
 
 
-@dataclasses.dataclass
-class Options:
-    """
-    Keep `Options` can be passed between processes.
-    """
-
-    app: str
-    call: bool = False
-    listen: str = "127.0.0.1:9000"
-    subprocess: int = 0
-    no_gevent: bool = False
-    max_workers: int = 10
-    watchfiles: str | None = None
-
-    # WSGI environment settings
-    url_scheme: str = "http"
-    url_prefix: str | None = None
-
-    backlog: int | None = None
-    dualstack_ipv6: bool = False
-    unix_socket_perms: int = 0o600
-    h11_max_incomplete_event_size: int | None = None
-    max_request_pre_process: int | None = None
-
-    # Server callback hooks
-    before_serve: str | None = None
-    before_graceful_exit: str | None = None
-    before_died: str | None = None
-
-    # Logging
-    no_access_log: bool = False
-
-    def __post_init__(self) -> None:
-        """
-        Check options. Do not do any side effects here.
-        """
-        if self.watchfiles is not None and self.subprocess <= 0:
-            raise ValueError("Cannot watch files without subprocesses")
-
-
 def parse_args(args: Sequence[str]) -> Options:
-    fields = {field.name: field for field in dataclasses.fields(Options)}
-
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
@@ -135,32 +141,32 @@ def parse_args(args: Sequence[str]) -> Options:
     parser.add_argument(
         "--call",
         help="use WSGI factory",
-        default=fields["call"].default,
+        default=Options.default_value("call"),
         action="store_true",
     )
     parser.add_argument(
         "--listen",
         "-l",
-        default=fields["listen"].default,
+        default=Options.default_value("listen"),
         help="listen address, HOST:PORT, unix:PATH",
     )
     parser.add_argument(
         "--subprocess",
         "-p",
-        default=fields["subprocess"].default,
+        default=Options.default_value("subprocess"),
         type=int,
         help="number of subprocesses",
     )
     parser.add_argument(
         "--no-gevent",
-        default=fields["no_gevent"].default,
+        default=Options.default_value("no_gevent"),
         action="store_true",
         help="do not use gevent",
     )
     parser.add_argument(
         "--max-workers",
         "-w",
-        default=fields["max_workers"].default,
+        default=Options.default_value("max_workers"),
         type=int,
         help="maximum number of threads or greenlets to use for handling requests",
     )
@@ -171,7 +177,7 @@ def parse_args(args: Sequence[str]) -> Options:
     )
     parser.add_argument(
         "--url-scheme",
-        default=fields["url_scheme"].default,
+        default=Options.default_value("url_scheme"),
         help="url scheme; will be passed to WSGI app as wsgi.url_scheme",
     )
     parser.add_argument(
@@ -188,7 +194,7 @@ def parse_args(args: Sequence[str]) -> Options:
     )
     parser.add_argument(
         "--dualstack-ipv6",
-        default=fields["dualstack_ipv6"].default,
+        default=Options.default_value("dualstack_ipv6"),
         action="store_true",
         help="enable dualstack ipv6",
     )
@@ -226,7 +232,7 @@ def parse_args(args: Sequence[str]) -> Options:
     )
     parser.add_argument(
         "--no-access-log",
-        default=fields["no_access_log"].default,
+        default=Options.default_value("no_access_log"),
         action="store_true",
         help="disable access log",
     )
