@@ -1,8 +1,3 @@
-import logging
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-
-
 def app(environ, start_response):
     status = "200 OK"
     headers = [("Content-type", "text/plain; charset=utf-8"), ("Content-Length", "12")]
