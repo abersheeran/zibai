@@ -105,7 +105,7 @@ def app(environ, start_response):
 
 if __name__ == "__main__":
     import sys
-    from zibai.cli import parse_args, main
+    from zibai import parse_args, main
 
     options = parse_args(["example:app"] + sys.argv[1:])
     main(options)
@@ -114,7 +114,7 @@ if __name__ == "__main__":
 `Options` consists of easily serializable types such as string, number, or None. Apart from necessary checks, there is no behavior similar to bind socket or create object. So if you don't want to read and parse the configuration from the command line, you can also create `Options` yourself.
 
 ```python
-from zibai.cli import Options, main
+from zibai import Options, main
 
 options = Options(app="example:app")
 main(options)
