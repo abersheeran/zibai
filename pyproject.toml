@@ -32,3 +32,29 @@ benchmark = [
     "waitress>=2.1.2",
     "gunicorn>=21.2.0",
 ]
+test = [
+    "pytest>=7.4.3",
+    "pytest-cov>=4.1.0",
+]
+
+[tool.coverage]
+ignores = [
+    "raise NotImplementedError"
+]
+
+[tool.coverage.run]
+omit = ["*/.venv/*", "*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if False:",
+    "assert False",
+    "if typing.TYPE_CHECKING:",
+    "if TYPE_CHECKING:",
+    "pass",
+    "\\.\\.\\.",
+]
+show_missing = true
+skip_covered = true

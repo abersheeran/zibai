@@ -60,7 +60,7 @@ def serve(
         graceful_exit.wait()
         try:
             before_graceful_exit_hook()
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Exception in `before_graceful_exit` callback")
         bind_socket.close()
         logger.info("Stopped listening on %s:%d", *listen_address)
@@ -84,7 +84,7 @@ def serve(
                 connection, address = bind_socket.accept()
             except OSError:  # bind_socket closed
                 if not graceful_exit.is_set():
-                    raise
+                    raise  # pragma: no cover
             else:
                 debug_logger.debug("Accepted connection from %s:%d", *address[:2])
                 future = executor.submit(
