@@ -19,7 +19,4 @@ class LimitRequestCountMiddleware:
         if self.max_request_pre_process is not None:
             self.request_count += 1
             if self.request_count >= self.max_request_pre_process:
-                if os.name == "nt":
-                    os.kill(os.getpid(), signal.CTRL_BREAK_EVENT)
-                else:
-                    os.kill(os.getpid(), signal.SIGTERM)
+                signal.raise_signal(signal.SIGTERM)
