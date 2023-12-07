@@ -37,6 +37,12 @@ test = [
     "pytest-cov>=4.1.0",
 ]
 
+[tool.ruff]
+extend-select = ["I"]
+
+[tool.ruff.lint]
+ignore = ["E731"]
+
 [tool.coverage]
 ignores = [
     "raise NotImplementedError"

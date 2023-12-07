@@ -1,8 +1,8 @@
+import dataclasses
 import os
 import signal
-import dataclasses
 
-from ..wsgi_typing import WSGIApp, Environ, StartResponse, IterableChunks
+from ..wsgi_typing import Environ, IterableChunks, StartResponse, WSGIApp
 
 
 @dataclasses.dataclass

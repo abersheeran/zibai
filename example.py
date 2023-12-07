@@ -7,7 +7,8 @@ def app(environ, start_response):
 
 if __name__ == "__main__":
     import sys
-    from zibai.cli import parse_args, main
+
+    from zibai.cli import main, parse_args
 
     options = parse_args(["example:app"] + sys.argv[1:])
     main(options)

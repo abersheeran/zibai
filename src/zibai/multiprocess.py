@@ -140,6 +140,7 @@ class MultiProcessManager:
     def restart_all(self) -> None:
         for idx, process in enumerate(tuple(self.processes)):
             process.terminate()
+            process.join()
             del self.processes[idx]
             process = Process(self.process_parameters)
             process.start()
@@ -194,14 +195,14 @@ class MultiProcessManager:
         if not self.should_exit.is_set():
             self.should_exit.set()
         else:
-            exit(0)
+            self.terminate_all()
 
     def handle_break(self) -> None:
         logger.info("Received SIGBREAK, exiting")
         if not self.should_exit.is_set():
             self.should_exit.set()
         else:
-            exit(0)
+            self.terminate_all()
 
     def handle_hup(self) -> None:
         logger.info("Received SIGHUP, restarting processes")

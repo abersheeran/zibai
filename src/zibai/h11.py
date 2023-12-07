@@ -6,8 +6,9 @@ from typing import Any, Callable
 
 import h11
 
+from .const import SERVER_NAME
+from .logger import debug_logger, error_logger, log_http
 from .utils import Input
-from .logger import debug_logger, log_http, error_logger
 from .wsgi_typing import Environ, ExceptionInfo, WSGIApp
 
 
@@ -24,6 +25,9 @@ class H11Protocol:
     peername: tuple[str, int]
     sockname: tuple[str, int]
 
+    graceful_exit: threading.Event
+
+    # WSGI variables
     url_scheme: str = "http"
     script_name: str = ""
 
@@ -31,8 +35,14 @@ class H11Protocol:
     response_buffer: tuple[int, list[tuple[bytes, bytes]]] | None = None
     header_sent: bool = False
 
+    def __post_init__(self):
+        self.s.settimeout(1)  # For graceful exit
+
     def get_next_event(self):
-        while self.c.their_state is not h11.DONE:
+        if self.c.their_state is h11.DONE:
+            return h11.PAUSED
+
+        while not self.graceful_exit.is_set():
             event = self.c.next_event()
             debug_logger.debug("Received event from %s:%d: %r", *self.peername, event)
 
@@ -42,14 +52,17 @@ class H11Protocol:
                         self.send_with_event(
                             h11.InformationalResponse(headers=[], status_code=100)
                         )
-                    self.c.receive_data(self.s.recv(MAX_INCOMPLETE_EVENT_SIZE))
+                    try:
+                        self.c.receive_data(self.s.recv(MAX_INCOMPLETE_EVENT_SIZE))
+                    except socket.timeout:
+                        pass
                 case h11.ConnectionClosed():
                     debug_logger.debug("Connection closed by %s:%d", *self.peername)
                     raise ConnectionClosed
                 case _:
                     return event
 
-        return h11.PAUSED
+        raise ConnectionClosed
 
     def send_with_event(self, event) -> None:
         data = self.c.send(event)
@@ -95,7 +108,7 @@ class H11Protocol:
                     (name.encode("latin1"), value.encode("latin1"))
                     for name, value in headers
                 ),
-                (b"Server", "Zî Bái".encode("latin1")),
+                (b"Server", SERVER_NAME),
             ],
         )
 
@@ -162,26 +175,10 @@ class H11Protocol:
 
     def call_wsgi(self, wsgi_app: WSGIApp) -> None:
         environ = self.init_environ()
+        iterable = None  # Just for finally block
+
         try:
             iterable = wsgi_app(environ, self.start_response)
-        except Exception:
-            self.start_response(
-                "500 Internal Server Error",
-                [
-                    ("Content-Type", "text/plain; charset=utf-8"),
-                    ("Content-Length", "21"),
-                ],
-            )
-            self.send_with_event(h11.Data(data=b"Internal Server Error"))
-            self.send_with_event(h11.EndOfMessage())
-
-            error_logger.exception(
-                "Error while calling WSGI application", exc_info=sys.exc_info()
-            )
-            log_http(environ, 500)
-            raise
-
-        try:
             iterator = iter(iterable)
 
             chunk = next(iterator)
@@ -206,12 +203,15 @@ class H11Protocol:
             if self.header_sent:
                 raise
 
-            self.start_response(
-                "500 Internal Server Error",
-                [
-                    ("Content-Type", "text/plain; charset=utf-8"),
-                    ("Content-Length", "21"),
-                ],
+            self.send_with_event(
+                h11.Response(
+                    status_code=500,
+                    headers=[
+                        (b"Content-Type", b"text/plain; charset=utf-8"),
+                        (b"Content-Length", b"21"),
+                        (b"Server", SERVER_NAME),
+                    ],
+                )
             )
             self.send_with_event(h11.Data(data=b"Internal Server Error"))
             self.send_with_event(h11.EndOfMessage())
@@ -254,6 +254,7 @@ def http11_protocol(
         s=sock,
         peername=peername,
         sockname=sockname,
+        graceful_exit=graceful_exit,
         url_scheme=url_scheme,
         script_name=script_name,
     )

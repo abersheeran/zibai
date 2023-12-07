@@ -1,14 +1,14 @@
 import atexit
 import os
 import socket
-from concurrent.futures import ThreadPoolExecutor
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
+from .h11 import http11_protocol
+from .logger import debug_logger, logger
 from .utils import unicode_to_wsgi
 from .wsgi_typing import WSGIApp
-from .h11 import http11_protocol
-from .logger import logger, debug_logger
 
 
 def handle_connection(

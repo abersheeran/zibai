@@ -14,7 +14,6 @@ from typing import (
     TypedDict,
 )
 
-
 CGIRequiredDefined = TypedDict(
     "CGIRequiredDefined",
     {

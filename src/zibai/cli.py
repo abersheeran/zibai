@@ -7,13 +7,13 @@ import multiprocessing
 import os
 import signal
 import socket
-from functools import reduce
 import threading
+from functools import reduce
 from typing import Any, Sequence
 
-from .logger import logger
 from .core import serve
-from .multiprocess import multiprocess, ProcessParameters
+from .logger import logger
+from .multiprocess import ProcessParameters, multiprocess
 from .wsgi_typing import WSGIApp
 
 
@@ -328,13 +328,20 @@ def main(options: Options, *, is_main: bool = True) -> None:
 
     graceful_exit = threading.Event()
 
-    signal.signal(signal.SIGINT, lambda sig, frame: exit(0))
-    signal.signal(
-        signal.SIGTERM,
-        lambda sig, frame: (
-            graceful_exit.set() if not graceful_exit.is_set() else exit(0)
-        ),
-    )
+    def handle_int(sig, frame) -> None:
+        logger.info("Received SIGINT, qucikly exiting")
+        graceful_exit.set()
+        exit(0)
+
+    def handle_term(sig, frame) -> None:
+        if graceful_exit.is_set():
+            logger.info("Received second SIGTERM, quickly exiting")
+            exit(0)
+        logger.info("Received SIGTERM, gracefully exiting")
+        graceful_exit.set()
+
+    signal.signal(signal.SIGINT, handle_int)
+    signal.signal(signal.SIGTERM, handle_term)
 
     serve(
         app=application,

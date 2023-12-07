@@ -1,6 +1,7 @@
 import os
 import random
-from zibai import create_bind_socket, import_from_string, serve
+
+from zibai import create_bind_socket
 
 
 def create_ipv4_socket():
