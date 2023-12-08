@@ -106,10 +106,13 @@ class MultiProcessManager:
         self.processes_num = processes_num
         self.process_parameters = process_parameters
         self.processes: list[Process] = []
+
+        self.should_exit = threading.Event()
+        self.keep_alive_checking = threading.Event()
+
         self.signal_queue: list[int] = []
         for sig in UNIX_SIGNALS:
             signal.signal(sig, lambda sig, frame: self.signal_queue.append(sig))
-        self.should_exit = threading.Event()
 
         # Sent by Ctrl+C.
         signal.signal(signal.SIGINT, lambda sig, frame: self.handle_int())
@@ -161,17 +164,19 @@ class MultiProcessManager:
         logger.info("Stopped parent process [{}]".format(os.getpid()))
 
     def keep_subprocess_alive(self) -> None:
+        self.keep_alive_checking.clear()
         for idx, process in enumerate(tuple(self.processes)):
             if process.is_alive():
                 continue
 
-            process.terminate()
+            process.kill()  # process is hung, kill it
             process.join()
             logger.info("Child process [{}] died".format(process.pid))
             del self.processes[idx]
             process = Process(self.process_parameters)
             process.start()
             self.processes.append(process)
+        self.keep_alive_checking.set()
 
     def handle_signals(self) -> None:
         for sig in tuple(self.signal_queue):
@@ -186,15 +191,15 @@ class MultiProcessManager:
     def handle_int(self) -> None:
         logger.info("Received SIGINT, killing all processes")
         self.should_exit.set()
+        self.keep_alive_checking.wait()
         self.kill_all()
-        self.join_all()
-        exit(0)
 
     def handle_term(self) -> None:
         logger.info("Received SIGTERM, exiting")
         if not self.should_exit.is_set():
             self.should_exit.set()
         else:
+            self.keep_alive_checking.wait()
             self.terminate_all()
 
     def handle_break(self) -> None:
@@ -202,6 +207,7 @@ class MultiProcessManager:
         if not self.should_exit.is_set():
             self.should_exit.set()
         else:
+            self.keep_alive_checking.wait()
             self.terminate_all()
 
     def handle_hup(self) -> None:

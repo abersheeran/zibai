@@ -7,6 +7,7 @@ import multiprocessing
 import os
 import signal
 import socket
+import sys
 import threading
 from functools import reduce
 from typing import Any, Sequence
@@ -331,12 +332,12 @@ def main(options: Options, *, is_main: bool = True) -> None:
     def handle_int(sig, frame) -> None:
         logger.info("Received SIGINT, qucikly exiting")
         graceful_exit.set()
-        exit(0)
+        sys.exit(0)
 
     def handle_term(sig, frame) -> None:
         if graceful_exit.is_set():
             logger.info("Received second SIGTERM, quickly exiting")
-            exit(0)
+            sys.exit(0)
         logger.info("Received SIGTERM, gracefully exiting")
         graceful_exit.set()
 
