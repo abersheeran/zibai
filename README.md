@@ -190,7 +190,7 @@ access_logger.addHandler(handler)
 
 Zī Bái will handle the following signals:
 
-- `SIGINT`: Trigger quick exit, `finally` or `atexit` maybe not be executed. If subprocess is enabled, the subprocess will also exit quickly.
+- `SIGINT`: Trigger quick exit. If subprocess is enabled, the subprocess will also exit quickly.
 - `SIGTERM`: Trigger graceful exit. If subprocess is enabled, then the main process will wait for the subprocess to exit gracefully.
 
 There are also some signals that will only be processed by the main process when subprocess is enabled.
