@@ -42,7 +42,10 @@ class H11Protocol:
         if self.c.their_state is h11.DONE:
             return h11.PAUSED
 
-        while not self.graceful_exit.is_set():
+        while True:
+            if self.c.their_state is h11.IDLE and self.graceful_exit.is_set():
+                raise ConnectionClosed
+
             event = self.c.next_event()
             debug_logger.debug("Received event from %s:%d: %r", *self.peername, event)
 
@@ -61,8 +64,6 @@ class H11Protocol:
                     raise ConnectionClosed
                 case _:
                     return event
-
-        raise ConnectionClosed
 
     def send_with_event(self, event) -> None:
         data = self.c.send(event)
