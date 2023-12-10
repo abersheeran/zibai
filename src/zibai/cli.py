@@ -344,6 +344,9 @@ def main(options: Options, *, is_main: bool = True) -> None:
     signal.signal(signal.SIGINT, handle_int)
     signal.signal(signal.SIGTERM, handle_term)
 
+    if is_main:
+        logger.info("Run in single process mode [%d]", os.getpid())
+
     serve(
         app=application,
         bind_socket=create_bind_socket(
