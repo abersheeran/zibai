@@ -1,9 +1,9 @@
-import atexit
 import os
 import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable
+from contextlib import contextmanager
+from typing import Any, Callable, Generator
 
 from .h11 import http11_protocol
 from .logger import debug_logger, logger
@@ -32,6 +32,21 @@ def handle_connection(
             )
         except ConnectionError:
             pass  # client closed connection, nothing to do
+
+
+@contextmanager
+def lifespan_hooks_context(
+    before_serve_hook: Callable[[], None] = lambda: None,
+    before_died_hook: Callable[[], None] = lambda: None,
+) -> Generator[None, None, None]:
+    """
+    Context manager for lifespan hooks.
+    """
+    before_serve_hook()
+    try:
+        yield
+    finally:
+        before_died_hook()
 
 
 def serve(
@@ -67,10 +82,11 @@ def serve(
 
     threading.Thread(target=_handle_exit_event, daemon=True).start()
 
-    before_serve_hook()
-    atexit.register(before_died_hook)
+    lifespan_hooks = lifespan_hooks_context(
+        before_serve_hook=before_serve_hook, before_died_hook=before_died_hook
+    )
 
-    with bind_socket, ThreadPoolExecutor(
+    with lifespan_hooks, bind_socket, ThreadPoolExecutor(
         max_workers=max_workers, thread_name_prefix="zibai_worker"
     ) as executor:
         if backlog is not None:
