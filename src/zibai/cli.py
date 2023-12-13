@@ -57,6 +57,9 @@ class Options:
         if self.watchfiles is not None and self.subprocess <= 0:
             raise ValueError("Cannot watch files without subprocesses")
 
+        if self.dualstack_ipv6 and not socket.has_dualstack_ipv6():
+            raise ValueError("Dualstack ipv6 is not supported on this platform")
+
     @classmethod
     def default_value(cls, field_name: str) -> Any:
         fields = {field.name: field for field in dataclasses.fields(Options)}
@@ -242,10 +245,7 @@ def parse_args(args: Sequence[str]) -> Options:
     # Parse unix_socket_perms as an octal integer.
     options.unix_socket_perms = int(options.unix_socket_perms, base=8)
 
-    # Check that platform supports dualstack ipv6.
-    if options.dualstack_ipv6 and not socket.has_dualstack_ipv6():
-        raise ValueError("Dualstack ipv6 is not supported on this platform")
-
+    # When watchfiles is specified, subprocess must be greater than 0.
     if options.watchfiles is not None:
         options.subprocess = max(options.subprocess, 1)
 
