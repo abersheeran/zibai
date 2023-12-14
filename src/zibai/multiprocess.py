@@ -87,6 +87,19 @@ class Process:
         self.parent_conn.close()
         self.child_conn.close()
 
+    def terminate_quickly(self) -> None:
+        if self.process.exitcode is not None:
+            return
+        assert self.process.pid is not None
+        if os.name == "nt":
+            os.kill(self.process.pid, signal.CTRL_C_EVENT)
+        else:
+            os.kill(self.process.pid, signal.SIGINT)
+        logger.info("Terminated quickly child process [{}]".format(self.process.pid))
+
+        self.parent_conn.close()
+        self.child_conn.close()
+
     def kill(self) -> None:
         # In Windows, the method will call `TerminateProcess` to kill the process.
         # In Unix, the method will send SIGKILL to the process.
@@ -132,9 +145,9 @@ class MultiProcessManager:
         for process in self.processes:
             process.terminate()
 
-    def kill_all(self) -> None:
+    def terminate_all_quickly(self) -> None:
         for process in self.processes:
-            process.kill()
+            process.terminate_quickly()
 
     def join_all(self) -> None:
         for process in self.processes:
@@ -158,7 +171,6 @@ class MultiProcessManager:
             self.handle_signals()
             self.keep_subprocess_alive()
 
-        self.terminate_all()
         self.join_all()
 
         logger.info("Stopped parent process [{}]".format(os.getpid()))
@@ -189,18 +201,16 @@ class MultiProcessManager:
                 logger.info(f"Received signal [{sig_name}], but nothing to do")
 
     def handle_int(self) -> None:
-        logger.info("Received SIGINT, killing all processes")
+        logger.info("Received SIGINT, quickly exiting")
         self.should_exit.set()
         self.keep_alive_checking.wait()
-        self.kill_all()
+        self.terminate_all_quickly()
 
     def handle_term(self) -> None:
         logger.info("Received SIGTERM, exiting")
-        if not self.should_exit.is_set():
-            self.should_exit.set()
-        else:
-            self.keep_alive_checking.wait()
-            self.terminate_all()
+        self.should_exit.set()
+        self.keep_alive_checking.wait()
+        self.terminate_all()
 
     def handle_break(self) -> None:
         logger.info("Received SIGBREAK, exiting")
