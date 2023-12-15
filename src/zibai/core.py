@@ -1,10 +1,9 @@
 import os
 import socket
-import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-import time
 from typing import Any, Callable, Generator
 
 from .h11 import http11_protocol

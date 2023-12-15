@@ -1,4 +1,5 @@
 import os
+import threading
 from contextlib import contextmanager
 from typing import Any, Callable, Generator
 
@@ -12,6 +13,18 @@ from .logger import logger
 def listen_for_changes(
     watchfiles: str, callback: Callable[[], Any]
 ) -> Generator[None, None, None]:
+    """
+    When any of the files in `watchfiles` matches a change, call `callback`.
+    """
+    reloading_event = threading.Event()
+
+    def run_callback(event: watchdog.events.FileSystemEvent) -> None:
+        if not reloading_event.is_set():
+            logger.info("Detected file change, reloading...")
+            reloading_event.set()
+            callback()
+            reloading_event.clear()
+
     def on_any_event(event: watchdog.events.FileSystemEvent) -> None:
         if event.event_type not in (
             watchdog.events.EVENT_TYPE_MOVED,
@@ -21,17 +34,10 @@ def listen_for_changes(
         ):
             return
 
-        logger.info("Detected file change, reloading...")
-        callback()
+        threading.Thread(target=run_callback, args=(event,), daemon=True).start()
 
     event_handler = watchdog.events.PatternMatchingEventHandler(
         patterns=[pattern.strip() for pattern in watchfiles.split(";")],
-        ignore_patterns=[
-            "venv/*",
-            ".venv/*",
-            ".git/*",
-            "__pycache__/*",
-        ],
     )
 
     setattr(event_handler, "on_any_event", on_any_event)
