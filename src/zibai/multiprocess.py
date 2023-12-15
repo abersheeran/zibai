@@ -36,10 +36,13 @@ class Process:
         self.process = SpawnProcess(target=self.target, daemon=True)
 
     def ping(self, timeout: float = 5) -> bool:
-        self.parent_conn.send(b"ping")
-        if self.parent_conn.poll(timeout):
-            self.parent_conn.recv()
-            return True
+        try:
+            self.parent_conn.send(b"ping")
+            if self.parent_conn.poll(timeout):
+                self.parent_conn.recv()
+                return True
+        except IOError:
+            pass
         return False
 
     def pong(self) -> None:
@@ -121,7 +124,7 @@ class MultiProcessManager:
         self.processes: list[Process] = []
 
         self.should_exit = threading.Event()
-        self.keep_alive_checking = threading.Event()
+        self.processes_manage_lock = threading.Lock()
 
         self.signal_queue: list[int] = []
         for sig in UNIX_SIGNALS:
@@ -136,10 +139,11 @@ class MultiProcessManager:
             signal.signal(signal.SIGBREAK, lambda sig, frame: self.handle_break())
 
     def init_processes(self) -> None:
-        for _ in range(self.processes_num):
-            process = Process(self.process_parameters)
-            process.start()
-            self.processes.append(process)
+        with self.processes_manage_lock:
+            for _ in range(self.processes_num):
+                process = Process(self.process_parameters)
+                process.start()
+                self.processes.append(process)
 
     def terminate_all(self) -> None:
         for process in self.processes:
@@ -153,14 +157,18 @@ class MultiProcessManager:
         for process in self.processes:
             process.join()
 
-    def restart_all(self) -> None:
-        for idx, process in enumerate(tuple(self.processes)):
-            process.terminate()
-            process.join()
-            del self.processes[idx]
-            process = Process(self.process_parameters)
-            process.start()
-            self.processes.append(process)
+    def restart_all(self, use_kill: bool = True) -> None:
+        with self.processes_manage_lock:
+            for idx, process in enumerate(tuple(self.processes)):
+                if use_kill:
+                    process.kill()
+                else:
+                    process.terminate()
+                process.join()
+                del self.processes[idx]
+                process = Process(self.process_parameters)
+                process.start()
+                self.processes.append(process)
 
     def mainloop(self) -> None:
         logger.info("Started parent process [{}]".format(os.getpid()))
@@ -169,14 +177,17 @@ class MultiProcessManager:
 
         while not self.should_exit.wait(0.5):
             self.handle_signals()
-            self.keep_subprocess_alive()
+            with self.processes_manage_lock:
+                self.keep_subprocess_alive()
 
         self.join_all()
 
         logger.info("Stopped parent process [{}]".format(os.getpid()))
 
     def keep_subprocess_alive(self) -> None:
-        self.keep_alive_checking.clear()
+        if self.should_exit.is_set():
+            return  # parent process is exiting, no need to keep subprocess alive
+
         for idx, process in enumerate(tuple(self.processes)):
             if process.is_alive():
                 continue
@@ -188,7 +199,6 @@ class MultiProcessManager:
             process = Process(self.process_parameters)
             process.start()
             self.processes.append(process)
-        self.keep_alive_checking.set()
 
     def handle_signals(self) -> None:
         for sig in tuple(self.signal_queue):
@@ -202,27 +212,25 @@ class MultiProcessManager:
 
     def handle_int(self) -> None:
         logger.info("Received SIGINT, quickly exiting")
-        self.should_exit.set()
-        self.keep_alive_checking.wait()
-        self.terminate_all_quickly()
+        with self.processes_manage_lock:
+            self.should_exit.set()
+            self.terminate_all_quickly()
 
     def handle_term(self) -> None:
         logger.info("Received SIGTERM, exiting")
-        self.should_exit.set()
-        self.keep_alive_checking.wait()
-        self.terminate_all()
+        with self.processes_manage_lock:
+            self.should_exit.set()
+            self.terminate_all()
 
     def handle_break(self) -> None:
         logger.info("Received SIGBREAK, exiting")
-        if not self.should_exit.is_set():
+        with self.processes_manage_lock:
             self.should_exit.set()
-        else:
-            self.keep_alive_checking.wait()
             self.terminate_all()
 
     def handle_hup(self) -> None:
         logger.info("Received SIGHUP, restarting processes")
-        self.restart_all()
+        self.restart_all(use_kill=False)
 
     def handle_ttin(self) -> None:
         logger.info("Received SIGTTIN, increasing processes")
