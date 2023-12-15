@@ -128,6 +128,7 @@ class MultiProcessManager:
         self.processes: list[Process] = []
 
         self.should_exit = threading.Event()
+        self.reloading = False
 
         self.signal_queue: list[int] = []
         for sig in UNIX_SIGNALS:
@@ -159,17 +160,20 @@ class MultiProcessManager:
         for process in self.processes:
             process.join(timeout)
 
-    def restart_all(self, quickly: bool = True) -> None:
+    def restart_all(self) -> None:
         for idx, process in enumerate(tuple(self.processes)):
-            if quickly:
-                process.terminate_quickly()
-            else:
-                process.terminate()
+            process.terminate()
             process.join()
             del self.processes[idx]
             process = Process(self.process_parameters)
             process.start()
             self.processes.append(process)
+
+    def on_watchfiles_reload(self) -> None:
+        self.reloading = True
+        self.terminate_all_quickly()
+        self.join_all()
+        self.reloading = False
 
     def mainloop(self) -> None:
         logger.info("Started parent process [{}]".format(os.getpid()))
@@ -215,6 +219,8 @@ class MultiProcessManager:
                 logger.info(f"Received signal [{sig_name}], but nothing to do")
 
     def handle_int(self) -> None:
+        if self.reloading:
+            return
         logger.info("Received SIGINT, quickly exiting")
         self.should_exit.set()
         self.terminate_all_quickly()
@@ -225,13 +231,15 @@ class MultiProcessManager:
         self.terminate_all()
 
     def handle_break(self) -> None:
+        if self.reloading:
+            return
         logger.info("Received SIGBREAK, exiting")
         self.should_exit.set()
         self.terminate_all()
 
     def handle_hup(self) -> None:
         logger.info("Received SIGHUP, restarting processes")
-        self.restart_all(quickly=False)
+        self.restart_all()
 
     def handle_ttin(self) -> None:
         logger.info("Received SIGTTIN, increasing processes")
@@ -261,7 +269,9 @@ def multiprocess(
     if watchfiles is not None:
         from .reloader import listen_for_changes
 
-        contextmanager = listen_for_changes(watchfiles, processes_manager.restart_all)
+        contextmanager = listen_for_changes(
+            watchfiles, processes_manager.on_watchfiles_reload
+        )
     else:
         contextmanager = nullcontext()
 
