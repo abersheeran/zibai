@@ -45,10 +45,10 @@ Use `--help` to see all available options.
 
 ```
 usage: __main__.py [-h] [--call] [--listen LISTEN] [--subprocess SUBPROCESS] [--no-gevent] [--max-workers MAX_WORKERS] [--watchfiles WATCHFILES]
-                   [--url-scheme URL_SCHEME] [--url-prefix URL_PREFIX] [--backlog BACKLOG] [--dualstack-ipv6]
-                   [--unix-socket-perms UNIX_SOCKET_PERMS] [--h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE]
-                   [--max-request-pre-process MAX_REQUEST_PRE_PROCESS] [--before-serve BEFORE_SERVE]
-                   [--before-graceful-exit BEFORE_GRACEFUL_EXIT] [--before-died BEFORE_DIED] [--no-access-log]
+                   [--backlog BACKLOG] [--dualstack-ipv6] [--unix-socket-perms UNIX_SOCKET_PERMS]
+                   [--h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE] [--max-request-pre-process MAX_REQUEST_PRE_PROCESS]
+                   [--graceful-exit-timeout GRACEFUL_EXIT_TIMEOUT] [--url-scheme URL_SCHEME] [--url-prefix URL_PREFIX]
+                   [--before-serve BEFORE_SERVE] [--before-graceful-exit BEFORE_GRACEFUL_EXIT] [--before-died BEFORE_DIED] [--no-access-log]
                    app
 
 positional arguments:
@@ -66,11 +66,6 @@ options:
                         maximum number of threads or greenlets to use for handling requests (default: 10)
   --watchfiles WATCHFILES
                         watch files for changes and restart workers (default: None)
-  --url-scheme URL_SCHEME
-                        url scheme; will be passed to WSGI app as wsgi.url_scheme (default: http)
-  --url-prefix URL_PREFIX
-                        url prefix; will be passed to WSGI app as SCRIPT_NAME, if not specified, use environment variable SCRIPT_NAME (default:
-                        None)
   --backlog BACKLOG     listen backlog (default: None)
   --dualstack-ipv6      enable dualstack ipv6 (default: False)
   --unix-socket-perms UNIX_SOCKET_PERMS
@@ -79,6 +74,13 @@ options:
                         maximum number of bytes in an incomplete HTTP event (default: None)
   --max-request-pre-process MAX_REQUEST_PRE_PROCESS
                         maximum number of requests to process before killing the worker (default: None)
+  --graceful-exit-timeout GRACEFUL_EXIT_TIMEOUT
+                        graceful exit timeout (default: 10)
+  --url-scheme URL_SCHEME
+                        url scheme; will be passed to WSGI app as wsgi.url_scheme (default: http)
+  --url-prefix URL_PREFIX
+                        url prefix; will be passed to WSGI app as SCRIPT_NAME, if not specified, use environment variable SCRIPT_NAME (default:
+                        None)
   --before-serve BEFORE_SERVE
                         callback to run before serving requests (default: None)
   --before-graceful-exit BEFORE_GRACEFUL_EXIT

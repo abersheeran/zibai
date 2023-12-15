@@ -32,15 +32,16 @@ class Options:
     max_workers: int = 10
     watchfiles: str | None = None
 
-    # WSGI environment settings
-    url_scheme: str = "http"
-    url_prefix: str | None = None
-
     backlog: int | None = None
     dualstack_ipv6: bool = False
     unix_socket_perms: int = 0o600
     h11_max_incomplete_event_size: int | None = None
     max_request_pre_process: int | None = None
+    graceful_exit_timeout: float = 10
+
+    # WSGI environment settings
+    url_scheme: str = "http"
+    url_prefix: str | None = None
 
     # Server callback hooks
     before_serve: str | None = None
@@ -180,17 +181,6 @@ def parse_args(args: Sequence[str]) -> Options:
         required=False,
     )
     parser.add_argument(
-        "--url-scheme",
-        default=Options.default_value("url_scheme"),
-        help="url scheme; will be passed to WSGI app as wsgi.url_scheme",
-    )
-    parser.add_argument(
-        "--url-prefix",
-        help="url prefix; will be passed to WSGI app as SCRIPT_NAME, "
-        "if not specified, use environment variable SCRIPT_NAME",
-        required=False,
-    )
-    parser.add_argument(
         "--backlog",
         type=int,
         help="listen backlog",
@@ -217,6 +207,23 @@ def parse_args(args: Sequence[str]) -> Options:
         "--max-request-pre-process",
         type=int,
         help="maximum number of requests to process before killing the worker",
+        required=False,
+    )
+    parser.add_argument(
+        "--graceful-exit-timeout",
+        default=Options.default_value("graceful_exit_timeout"),
+        type=float,
+        help="graceful exit timeout",
+    )
+    parser.add_argument(
+        "--url-scheme",
+        default=Options.default_value("url_scheme"),
+        help="url scheme; will be passed to WSGI app as wsgi.url_scheme",
+    )
+    parser.add_argument(
+        "--url-prefix",
+        help="url prefix; will be passed to WSGI app as SCRIPT_NAME, "
+        "if not specified, use environment variable SCRIPT_NAME",
         required=False,
     )
     parser.add_argument(
@@ -357,6 +364,7 @@ def main(options: Options, *, is_main: bool = True) -> None:
         backlog=options.backlog,
         max_workers=options.max_workers,
         graceful_exit=graceful_exit,
+        graceful_exit_timeout=options.graceful_exit_timeout,
         before_serve_hook=before_serve_hook,
         before_graceful_exit_hook=before_graceful_exit_hook,
         before_died_hook=before_died_hook,

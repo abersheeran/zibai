@@ -108,9 +108,13 @@ class Process:
         # In Unix, the method will send SIGKILL to the process.
         self.process.kill()
 
-    def join(self) -> None:
+    def join(self, timeout: float | None = None) -> None:
         logger.info("Waiting for child process [{}]".format(self.process.pid))
-        self.process.join()
+        self.process.join(timeout)
+        # Timeout, kill the process
+        while self.process.exitcode is None:
+            self.process.kill()
+            self.process.join(1)
 
     @property
     def pid(self) -> int | None:
@@ -151,9 +155,9 @@ class MultiProcessManager:
         for process in self.processes:
             process.terminate_quickly()
 
-    def join_all(self) -> None:
+    def join_all(self, timeout: float | None = None) -> None:
         for process in self.processes:
-            process.join()
+            process.join(timeout)
 
     def restart_all(self, use_kill: bool = True) -> None:
         for idx, process in enumerate(tuple(self.processes)):
@@ -189,7 +193,11 @@ class MultiProcessManager:
                 continue
 
             process.kill()  # process is hung, kill it
-            process.join()
+            process.join(1)
+
+            if self.should_exit.is_set():
+                return
+
             logger.info("Child process [{}] died".format(process.pid))
             del self.processes[idx]
             process = Process(self.process_parameters)

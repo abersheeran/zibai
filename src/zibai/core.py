@@ -1,8 +1,10 @@
 import os
 import socket
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+import time
 from typing import Any, Callable, Generator
 
 from .h11 import http11_protocol
@@ -55,6 +57,7 @@ def serve(
     bind_socket: socket.socket,
     max_workers: int,
     graceful_exit: threading.Event,
+    graceful_exit_timeout: float = 10,
     backlog: int | None = None,
     url_scheme: str = "http",
     script_name: str | None = None,
@@ -77,18 +80,23 @@ def serve(
             before_graceful_exit_hook()
         except Exception:  # pragma: no cover
             logger.exception("Exception in `before_graceful_exit` callback")
-        bind_socket.close()
-        logger.info("Stopped listening on %s:%d", *listen_address)
+        finally:
+            bind_socket.close()
+            logger.info("Stopped listening on %s:%d", *listen_address)
+            time.sleep(graceful_exit_timeout)
+            logger.info("Graceful exit timeout, force exit")
+            os.kill(os.getpid(), 9)
 
     threading.Thread(target=_handle_exit_event, daemon=True).start()
 
     lifespan_hooks = lifespan_hooks_context(
         before_serve_hook=before_serve_hook, before_died_hook=before_died_hook
     )
-
-    with lifespan_hooks, bind_socket, ThreadPoolExecutor(
+    executor = ThreadPoolExecutor(
         max_workers=max_workers, thread_name_prefix="zibai_worker"
-    ) as executor:
+    )
+
+    with lifespan_hooks, bind_socket, executor:
         if backlog is not None:
             bind_socket.listen(backlog)
         else:
