@@ -25,7 +25,7 @@ class Input:
         if not self._has_more:
             return b""
         data = self.receive()
-        self._has_more = data == b""
+        self._has_more = data != b""
         return data
 
     def read(self, size: int = -1) -> bytes:
