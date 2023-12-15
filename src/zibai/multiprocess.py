@@ -159,10 +159,10 @@ class MultiProcessManager:
         for process in self.processes:
             process.join(timeout)
 
-    def restart_all(self, use_kill: bool = True) -> None:
+    def restart_all(self, quickly: bool = True) -> None:
         for idx, process in enumerate(tuple(self.processes)):
-            if use_kill:
-                process.kill()
+            if quickly:
+                process.terminate_quickly()
             else:
                 process.terminate()
             process.join()
@@ -231,7 +231,7 @@ class MultiProcessManager:
 
     def handle_hup(self) -> None:
         logger.info("Received SIGHUP, restarting processes")
-        self.restart_all(use_kill=False)
+        self.restart_all(quickly=False)
 
     def handle_ttin(self) -> None:
         logger.info("Received SIGTTIN, increasing processes")
