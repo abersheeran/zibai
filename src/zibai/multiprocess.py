@@ -124,7 +124,6 @@ class MultiProcessManager:
         self.processes: list[Process] = []
 
         self.should_exit = threading.Event()
-        self.processes_manage_lock = threading.Lock()
 
         self.signal_queue: list[int] = []
         for sig in UNIX_SIGNALS:
@@ -139,11 +138,10 @@ class MultiProcessManager:
             signal.signal(signal.SIGBREAK, lambda sig, frame: self.handle_break())
 
     def init_processes(self) -> None:
-        with self.processes_manage_lock:
-            for _ in range(self.processes_num):
-                process = Process(self.process_parameters)
-                process.start()
-                self.processes.append(process)
+        for _ in range(self.processes_num):
+            process = Process(self.process_parameters)
+            process.start()
+            self.processes.append(process)
 
     def terminate_all(self) -> None:
         for process in self.processes:
@@ -158,17 +156,16 @@ class MultiProcessManager:
             process.join()
 
     def restart_all(self, use_kill: bool = True) -> None:
-        with self.processes_manage_lock:
-            for idx, process in enumerate(tuple(self.processes)):
-                if use_kill:
-                    process.kill()
-                else:
-                    process.terminate()
-                process.join()
-                del self.processes[idx]
-                process = Process(self.process_parameters)
-                process.start()
-                self.processes.append(process)
+        for idx, process in enumerate(tuple(self.processes)):
+            if use_kill:
+                process.kill()
+            else:
+                process.terminate()
+            process.join()
+            del self.processes[idx]
+            process = Process(self.process_parameters)
+            process.start()
+            self.processes.append(process)
 
     def mainloop(self) -> None:
         logger.info("Started parent process [{}]".format(os.getpid()))
@@ -177,8 +174,7 @@ class MultiProcessManager:
 
         while not self.should_exit.wait(0.5):
             self.handle_signals()
-            with self.processes_manage_lock:
-                self.keep_subprocess_alive()
+            self.keep_subprocess_alive()
 
         self.join_all()
 
@@ -212,21 +208,18 @@ class MultiProcessManager:
 
     def handle_int(self) -> None:
         logger.info("Received SIGINT, quickly exiting")
-        with self.processes_manage_lock:
-            self.should_exit.set()
-            self.terminate_all_quickly()
+        self.should_exit.set()
+        self.terminate_all_quickly()
 
     def handle_term(self) -> None:
         logger.info("Received SIGTERM, exiting")
-        with self.processes_manage_lock:
-            self.should_exit.set()
-            self.terminate_all()
+        self.should_exit.set()
+        self.terminate_all()
 
     def handle_break(self) -> None:
         logger.info("Received SIGBREAK, exiting")
-        with self.processes_manage_lock:
-            self.should_exit.set()
-            self.terminate_all()
+        self.should_exit.set()
+        self.terminate_all()
 
     def handle_hup(self) -> None:
         logger.info("Received SIGHUP, restarting processes")
