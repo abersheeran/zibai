@@ -181,11 +181,11 @@ You can configure the output format of `access_logger` and `error_logger` to acc
 ```python
 from zibai.logger import access_logger
 
-handler = logging.StreamHandler()
-handler.formatter = logging.Formatter(
+formatter = logging.Formatter(
     "%(asctime)s [%(REMOTE_ADDR)s] %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S"
 )
-access_logger.addHandler(handler)
+for handler in access_logger.handlers:
+    handler.setFormatter(handler.formatter)
 ```
 
 ## Signals
