@@ -67,10 +67,7 @@ class Process:
         return self.parameters.f(*self.parameters.args, **self.parameters.kwargs)
 
     def is_alive(self, timeout: float = 5) -> bool:
-        if not self.process.is_alive():
-            return False
-
-        return self.ping(timeout)
+        return self.process.is_alive() and self.ping(timeout)
 
     def start(self) -> None:
         self.process.start()
