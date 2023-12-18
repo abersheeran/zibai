@@ -33,10 +33,13 @@ class H11Protocol:
 
     # State variables
     response_buffer: tuple[int, list[tuple[bytes, bytes]]] | None = None
-    header_sent: bool = False
 
     def __post_init__(self):
         self.s.settimeout(1)  # For graceful exit
+
+    @property
+    def header_sent(self) -> bool:
+        return self.c.our_state is not h11.IDLE
 
     def get_next_event(self):
         if self.c.their_state is h11.DONE:
@@ -190,7 +193,6 @@ class H11Protocol:
             self.send_with_event(
                 h11.Response(status_code=status_code, headers=self.response_buffer[1])
             )
-            self.header_sent = True
 
             log_http(environ, status_code)
 
