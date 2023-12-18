@@ -44,8 +44,8 @@ python -m zibai example:create_app --call
 Use `--help` to see all available options.
 
 ```
-usage: __main__.py [-h] [--call] [--listen LISTEN] [--subprocess SUBPROCESS] [--no-gevent] [--max-workers MAX_WORKERS] [--watchfiles WATCHFILES]
-                   [--backlog BACKLOG] [--dualstack-ipv6] [--unix-socket-perms UNIX_SOCKET_PERMS]
+usage: __main__.py [-h] [--call] [--listen LISTEN [LISTEN ...]] [--subprocess SUBPROCESS] [--no-gevent] [--max-workers MAX_WORKERS]
+                   [--watchfiles WATCHFILES] [--backlog BACKLOG] [--dualstack-ipv6] [--unix-socket-perms UNIX_SOCKET_PERMS]
                    [--h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE] [--max-request-pre-process MAX_REQUEST_PRE_PROCESS]
                    [--graceful-exit-timeout GRACEFUL_EXIT_TIMEOUT] [--url-scheme URL_SCHEME] [--url-prefix URL_PREFIX]
                    [--before-serve BEFORE_SERVE] [--before-graceful-exit BEFORE_GRACEFUL_EXIT] [--before-died BEFORE_DIED] [--no-access-log]
@@ -57,8 +57,8 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   --call                use WSGI factory (default: False)
-  --listen LISTEN, -l LISTEN
-                        listen address, HOST:PORT, unix:PATH (default: 127.0.0.1:9000)
+  --listen LISTEN [LISTEN ...], -l LISTEN [LISTEN ...]
+                        listen address, HOST:PORT, unix:PATH (default: ['127.0.0.1:8000'])
   --subprocess SUBPROCESS, -p SUBPROCESS
                         number of subprocesses (default: 0)
   --no-gevent           do not use gevent (default: False)
@@ -192,7 +192,7 @@ for handler in access_logger.handlers:
 
 Zī Bái will handle the following signals:
 
-- `SIGINT`: Trigger quick exit. If subprocess is enabled, then the main process will wait for the subprocesses to exit quickly.
+- `SIGINT`: Trigger quick exit (Just call `sys.exit(0)`). If subprocess is enabled, then the main process will wait for the subprocesses to exit quickly.
 - `SIGTERM`: Trigger graceful exit. If subprocess is enabled, then the main process will wait for the subprocesses to exit gracefully.
 
 There are also some signals that will only be processed by the main process when subprocess is enabled.

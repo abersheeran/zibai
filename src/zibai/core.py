@@ -1,4 +1,5 @@
 import os
+import select
 import socket
 import threading
 import time
@@ -22,6 +23,7 @@ def handle_connection(
     script_name: str = "",
 ) -> None:
     debug_logger.debug("Handling connection from %s:%d", *address[:2])
+    s.setblocking(True)
     with s:
         try:
             http11_protocol(
@@ -53,11 +55,10 @@ def lifespan_hooks_context(
 def serve(
     *,
     app: Any,
-    bind_socket: socket.socket,
+    bind_sockets: list[socket.socket],
     max_workers: int,
     graceful_exit: threading.Event,
     graceful_exit_timeout: float = 10,
-    backlog: int | None = None,
     url_scheme: str = "http",
     script_name: str | None = None,
     before_serve_hook: Callable[[], None] = lambda: None,
@@ -71,8 +72,6 @@ def serve(
         # If script_name is not specified, use the environment variable.
         script_name = unicode_to_wsgi(os.environ.get("SCRIPT_NAME", ""))
 
-    listen_address = bind_socket.getsockname()[:2]
-
     def _handle_exit_event() -> None:
         graceful_exit.wait()
         try:
@@ -80,8 +79,6 @@ def serve(
         except Exception:  # pragma: no cover
             logger.exception("Exception in `before_graceful_exit` callback")
         finally:
-            bind_socket.close()
-            logger.info("Stopped listening on %s:%d", *listen_address)
             time.sleep(graceful_exit_timeout)
             logger.info("Graceful exit timeout, force exit")
             os.kill(os.getpid(), 9)
@@ -95,20 +92,18 @@ def serve(
         max_workers=max_workers, thread_name_prefix="zibai_worker"
     )
 
-    with lifespan_hooks, bind_socket, executor:
-        if backlog is not None:
-            bind_socket.listen(backlog)
-        else:
-            bind_socket.listen()
-        logger.info("Accepting request on %s:%d", *listen_address)
+    with lifespan_hooks, executor:
+        for sock in bind_sockets:
+            sock.setblocking(False)
 
         while not graceful_exit.is_set():
-            try:
-                connection, address = bind_socket.accept()
-            except OSError:  # bind_socket closed
-                if not graceful_exit.is_set():
-                    raise  # pragma: no cover
-            else:
+            # Wait for sockets to be ready
+            r, w, e = select.select(bind_sockets, [], [], 0.1)
+            if not (r or w or e):
+                continue
+
+            for sock in r:
+                connection, address = sock.accept()
                 debug_logger.debug("Accepted connection from %s:%d", *address[:2])
                 future = executor.submit(
                     handle_connection,

@@ -240,12 +240,16 @@ def http11_protocol(
     url_scheme: str = "http",
     script_name: str = "",
 ) -> None:
-    peername = sock.getpeername()[:2]
+    peername = sock.getpeername()
     if isinstance(peername, str):
         peername = (peername, 0)
-    sockname = sock.getsockname()[:2]
+    else:
+        peername = peername[:2]
+    sockname = sock.getsockname()
     if isinstance(sockname, str):
         sockname = (sockname, 0)
+    else:
+        sockname = sockname[:2]
 
     h11_connection = h11.Connection(
         our_role=h11.SERVER, max_incomplete_event_size=MAX_INCOMPLETE_EVENT_SIZE

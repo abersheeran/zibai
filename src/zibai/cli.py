@@ -10,7 +10,7 @@ import socket
 import sys
 import threading
 from functools import reduce
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from .core import serve
 from .logger import logger
@@ -26,7 +26,7 @@ class Options:
 
     app: str
     call: bool = False
-    listen: str = "127.0.0.1:9000"
+    listen: list[str] = dataclasses.field(default_factory=lambda: ["127.0.0.1:8000"])
     subprocess: int = 0
     no_gevent: bool = False
     max_workers: int = 10
@@ -51,23 +51,69 @@ class Options:
     # Logging
     no_access_log: bool = False
 
+    # After __post_init__
+    sockets: list[socket.socket] = dataclasses.field(init=False)
+
     def __post_init__(self) -> None:
-        """
-        Check options. Do not do any side effects here.
-        """
         if self.watchfiles is not None and self.subprocess <= 0:
             raise ValueError("Cannot watch files without subprocesses")
 
         if self.dualstack_ipv6 and not socket.has_dualstack_ipv6():
             raise ValueError("Dualstack ipv6 is not supported on this platform")
 
+        self.init_sockets()
+
     @classmethod
     def default_value(cls, field_name: str) -> Any:
         fields = {field.name: field for field in dataclasses.fields(Options)}
         default = fields[field_name].default
-        if default is dataclasses.MISSING:
+        default_factory = fields[field_name].default_factory
+        if default is dataclasses.MISSING and default_factory is dataclasses.MISSING:
             raise ValueError(f"Field {field_name} has no default value")
+        if default_factory is not dataclasses.MISSING:
+            return default_factory()
         return default
+
+    def init_sockets(self) -> None:
+        self.sockets = []
+
+        for listen in self.listen:
+            sock = create_bind_socket(
+                listen,
+                uds_perms=self.unix_socket_perms,
+                dualstack_ipv6=self.dualstack_ipv6,
+            )
+            if self.backlog is not None:
+                sock.listen(self.backlog)
+            else:
+                sock.listen()
+            sockname = sock.getsockname()
+            if isinstance(sockname, str):
+                logger.info("Listening on %s", sockname)
+            else:
+                logger.info("Listening on %s:%d", *sockname[:2])
+            self.sockets.append(sock)
+
+    def get_application(self) -> WSGIApp:
+        return get_app(self.app, self.call)
+
+    def get_before_serve_hook(self) -> Callable[[], None]:
+        if self.before_serve is not None:
+            return import_from_string(self.before_serve)
+        else:
+            return lambda: None
+
+    def get_before_graceful_exit_hook(self) -> Callable[[], None]:
+        if self.before_graceful_exit is not None:
+            return import_from_string(self.before_graceful_exit)
+        else:
+            return lambda: None
+
+    def get_before_died_hook(self) -> Callable[[], None]:
+        if self.before_died is not None:
+            return import_from_string(self.before_died)
+        else:
+            return lambda: None
 
 
 def import_from_string(import_str: str) -> Any:
@@ -93,6 +139,8 @@ def create_bind_socket(
 
         path = value[5:]
         sock = socket.socket(socket.AF_UNIX, socket_type)  # type: ignore
+        if os.path.exists(path):
+            os.unlink(path)
         sock.bind(path)
 
         os.chmod(path, uds_perms)
@@ -131,7 +179,6 @@ def create_bind_socket(
     else:  # In windows, SO_REUSEPORT is not available
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    # Bind socket
     sock.bind((str(address), port))
 
     return sock
@@ -153,6 +200,7 @@ def parse_args(args: Sequence[str]) -> Options:
         "--listen",
         "-l",
         default=Options.default_value("listen"),
+        nargs="+",
         help="listen address, HOST:PORT, unix:PATH",
     )
     parser.add_argument(
@@ -288,14 +336,9 @@ def main(options: Options, *, is_main: bool = True) -> None:
     if options.no_access_log:
         logging.getLogger("zibai.access").setLevel(logging.WARNING)
 
-    # Check that app is importable.
-    get_app(options.app, use_factory=options.call)
-    # Check that bind socket can be created.
-    create_bind_socket(
-        options.listen,
-        uds_perms=options.unix_socket_perms,
-        dualstack_ipv6=options.dualstack_ipv6,
-    ).close()
+    # Before use multiprocessing, we need to call `get_application` to make sure
+    # the application can be imported correctly.
+    application = options.get_application()
 
     if is_main and options.subprocess > 0:
         multiprocess(
@@ -311,22 +354,6 @@ def main(options: Options, *, is_main: bool = True) -> None:
 
         h11.MAX_INCOMPLETE_EVENT_SIZE = options.h11_max_incomplete_event_size
 
-    if options.before_serve is not None:
-        before_serve_hook = import_from_string(options.before_serve)
-    else:
-        before_serve_hook = lambda: None
-
-    if options.before_graceful_exit is not None:
-        before_graceful_exit_hook = import_from_string(options.before_graceful_exit)
-    else:
-        before_graceful_exit_hook = lambda: None
-
-    if options.before_died is not None:
-        before_died_hook = import_from_string(options.before_died)
-    else:
-        before_died_hook = lambda: None
-
-    application: WSGIApp = import_from_string(options.app)
     if options.max_request_pre_process is not None:
         from .middlewares.limit_request_count import LimitRequestCountMiddleware
 
@@ -356,16 +383,13 @@ def main(options: Options, *, is_main: bool = True) -> None:
 
     serve(
         app=application,
-        bind_socket=create_bind_socket(
-            options.listen,
-            uds_perms=options.unix_socket_perms,
-            dualstack_ipv6=options.dualstack_ipv6,
-        ),
-        backlog=options.backlog,
+        bind_sockets=options.sockets,
         max_workers=options.max_workers,
         graceful_exit=graceful_exit,
         graceful_exit_timeout=options.graceful_exit_timeout,
-        before_serve_hook=before_serve_hook,
-        before_graceful_exit_hook=before_graceful_exit_hook,
-        before_died_hook=before_died_hook,
+        url_scheme=options.url_scheme,
+        script_name=options.url_prefix,
+        before_serve_hook=options.get_before_serve_hook(),
+        before_graceful_exit_hook=options.get_before_graceful_exit_hook(),
+        before_died_hook=options.get_before_died_hook(),
     )

@@ -3,11 +3,13 @@ import signal
 import threading
 import time
 from contextlib import nullcontext
-from multiprocessing import Pipe
+from multiprocessing import Pipe, get_context
 from multiprocessing.context import SpawnProcess
 from typing import Any, Callable, ParamSpec
 
 from .logger import logger
+
+get_context("spawn").allow_connection_pickling()
 
 UNIX_SIGNALS = {
     getattr(signal, f"SIG{x}"): x
