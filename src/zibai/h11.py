@@ -275,7 +275,6 @@ def http11_protocol(
                     case h11.EndOfMessage() | h11.PAUSED:
                         h.c.start_next_cycle()
                         h.response_buffer = None
-                        h.header_sent = False
                         debug_logger.debug("Start next cycle in %s:%d", *h.peername)
                         break
                     case h11.Data():  # unread request body
