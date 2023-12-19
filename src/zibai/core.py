@@ -23,7 +23,6 @@ def handle_connection(
     script_name: str = "",
 ) -> None:
     debug_logger.debug("Handling connection from %s:%d", *address[:2])
-    s.setblocking(True)
     with s:
         try:
             http11_protocol(
