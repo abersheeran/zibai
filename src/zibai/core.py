@@ -92,9 +92,6 @@ def serve(
     )
 
     with lifespan_hooks, executor:
-        for sock in bind_sockets:
-            sock.setblocking(False)
-
         while not graceful_exit.is_set():
             # Wait for sockets to be ready
             r, w, e = select.select(bind_sockets, [], [], 0.1)
