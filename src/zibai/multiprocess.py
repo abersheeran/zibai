@@ -128,7 +128,7 @@ class MultiProcessManager:
         self.processes: list[Process] = []
 
         self.should_exit = threading.Event()
-        self.reloading = False
+        self.reload_lock = threading.Lock()
 
         self.signal_queue: list[int] = []
         for sig in UNIX_SIGNALS:
@@ -170,12 +170,11 @@ class MultiProcessManager:
             self.processes.append(process)
 
     def on_watchfiles_reload(self) -> None:
-        self.reloading = True
-        self.terminate_all_quickly()
-        self.join_all()
-        time.sleep(1)  # Wait for the Ctrl+C signal to be handled
-        # Because in Windows, the Ctrl+C signal always send to main process.
-        self.reloading = False
+        with self.reload_lock:
+            self.terminate_all_quickly()
+            self.join_all()
+            time.sleep(1)  # Wait for the Ctrl+C signal to be handled
+            # Because in Windows, the Ctrl+C signal always send to main process.
 
     def mainloop(self) -> None:
         logger.info("Started parent process [{}]".format(os.getpid()))
@@ -221,7 +220,7 @@ class MultiProcessManager:
                 logger.info(f"Received signal [{sig_name}], but nothing to do")
 
     def handle_int(self) -> None:
-        if self.reloading:
+        if self.reload_lock.locked():
             return
         logger.info("Received SIGINT, quickly exiting")
         self.should_exit.set()
@@ -233,8 +232,6 @@ class MultiProcessManager:
         self.terminate_all()
 
     def handle_break(self) -> None:
-        if self.reloading:
-            return
         logger.info("Received SIGBREAK, exiting")
         self.should_exit.set()
         self.terminate_all()
