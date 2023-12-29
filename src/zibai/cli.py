@@ -95,7 +95,10 @@ class Options:
             self.sockets.append(sock)
 
     def get_application(self) -> WSGIApp:
-        return get_app(self.app, self.call)
+        app = import_from_string(self.app)
+        if self.call:
+            app = app()
+        return app
 
     def get_before_serve_hook(self) -> Callable[[], None]:
         if self.before_serve is not None:
@@ -114,6 +117,15 @@ class Options:
             return import_from_string(self.before_died)
         else:
             return lambda: None
+
+    def configure_logging(self) -> None:
+        if self.no_access_log:
+            logging.getLogger("zibai.access").setLevel(logging.WARNING)
+
+        # Set default logging format.
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+        )
 
 
 def import_from_string(import_str: str) -> Any:
@@ -310,17 +322,12 @@ def parse_args(args: Sequence[str]) -> Options:
 spawn = multiprocessing.get_context("spawn")
 
 
-def get_app(string: str, use_factory: bool = False) -> Any:
-    """
-    Get WSGI app from import string.
-    """
-    app = import_from_string(string)
-    if use_factory:
-        app = app()
-    return app
-
-
 def main(options: Options, *, is_main: bool = True) -> None:
+    """
+    Main entrypoint for running Zī Bái.
+    """
+    options.configure_logging()
+
     if not options.no_gevent and (options.subprocess == 0 or not is_main):
         # Single process mode or worker process with gevent.
         try:
@@ -332,9 +339,6 @@ def main(options: Options, *, is_main: bool = True) -> None:
 
             gevent.monkey.patch_all()
             logger.info("Using gevent for worker pool")
-
-    if options.no_access_log:
-        logging.getLogger("zibai.access").setLevel(logging.WARNING)
 
     # Before use multiprocessing, we need to call `get_application` to make sure
     # the application can be imported correctly.

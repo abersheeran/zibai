@@ -1,8 +1,5 @@
 import logging
 
-# Set default logging format.
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-
 logger = logging.getLogger("zibai")
 
 debug_logger = logging.getLogger("zibai.debug")
