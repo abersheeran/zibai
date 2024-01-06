@@ -113,7 +113,7 @@ if __name__ == "__main__":
     main(options)
 ```
 
-`Options` consists of easily serializable types such as string, number, or None. Apart from necessary checks, there is no behavior similar to bind socket or create object. So if you don't want to read and parse the configuration from the command line, you can also create `Options` yourself.
+`Options` consists of easily serializable types such as string, number, or None. So if you don't want to read and parse the configuration from the command line, you can also create `Options` yourself.
 
 ```python
 from zibai import Options, main
