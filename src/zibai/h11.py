@@ -273,7 +273,13 @@ def http11_protocol(
                 event = h.get_next_event()
                 match event:
                     case h11.EndOfMessage() | h11.PAUSED:
-                        h.c.start_next_cycle()
+                        try:
+                            h.c.start_next_cycle()
+                        except h11.LocalProtocolError:
+                            debug_logger.debug(
+                                "Connection closed by %s:%d", *h.peername
+                            )
+                            break
                         h.response_buffer = None
                         debug_logger.debug("Start next cycle in %s:%d", *h.peername)
                         break
