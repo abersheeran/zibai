@@ -50,9 +50,7 @@ def listen_for_changes(
 
     observer.start()
     try:
-        logger.debug("Started observer")
         yield
     finally:
-        logger.debug("Stopping observer")
         observer.stop()
         observer.join()
