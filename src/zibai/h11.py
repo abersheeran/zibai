@@ -63,7 +63,6 @@ class H11Protocol:
                     except socket.timeout:
                         pass
                 case h11.ConnectionClosed():
-                    debug_logger.debug("Connection closed by %s:%d", *self.peername)
                     raise ConnectionClosed
                 case _:
                     return event
@@ -276,10 +275,7 @@ def http11_protocol(
                         try:
                             h.c.start_next_cycle()
                         except h11.LocalProtocolError:
-                            debug_logger.debug(
-                                "Connection closed by %s:%d", *h.peername
-                            )
-                            break
+                            raise ConnectionClosed
                         h.response_buffer = None
                         debug_logger.debug("Start next cycle in %s:%d", *h.peername)
                         break
