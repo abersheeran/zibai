@@ -2,7 +2,7 @@
 
 > 中曲之山有兽焉，其状如马而白身黑尾，一角，虎牙爪，音如鼓音，其名曰駮，是食虎豹，可以御兵。
 
-A modern pure-Python WSGI server. Can be launched using the command line or programmatically.
+A modern high-performance pure-Python WSGI server. Can be launched using the command line or programmatically.
 
 Correct handling of the HTTP protocol is ensured by [h11](https://github.com/python-hyper/h11). **Optional** [gevent](https://github.com/gevent/gevent).
 
