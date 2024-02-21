@@ -87,11 +87,6 @@ class Options:
                 sock.listen(self.backlog)
             else:
                 sock.listen()
-            sockname = sock.getsockname()
-            if isinstance(sockname, str):
-                logger.info("Listening on %s", sockname)
-            else:
-                logger.info("Listening on %s:%d", *sockname[:2])
             self.sockets.append(sock)
 
     def get_application(self) -> WSGIApp:
@@ -327,6 +322,13 @@ def main(options: Options, *, is_main: bool = True) -> None:
     Main entrypoint for running Zī Bái.
     """
     options.configure_logging()
+
+    for sock in options.sockets:
+        sockname = sock.getsockname()
+        if isinstance(sockname, str):
+            logger.info("Listening on %s", sockname)
+        else:
+            logger.info("Listening on %s:%d", *sockname[:2])
 
     if not options.no_gevent and (options.subprocess == 0 or not is_main):
         # Single process mode or worker process with gevent.
