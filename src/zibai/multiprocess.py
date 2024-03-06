@@ -36,7 +36,7 @@ class Process:
     def __init__(self, parameters: ProcessParameters) -> None:
         self.parameters = parameters
         self.parent_conn, self.child_conn = Pipe()
-        self.process = SpawnProcess(target=self.target, daemon=True)
+        self.process = SpawnProcess(target=self.target)
 
     def ping(self, timeout: float = 5) -> bool:
         try:
