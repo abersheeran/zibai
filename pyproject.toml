@@ -1,6 +1,6 @@
 [project]
 name = "zibai-server"
-version = "0.9.6"
+version = "0.10.0"
 description = "A modern high-performance Python WSGI server."
 authors = [
     {name = "abersheeran", email = "me@abersheeran.com"},
@@ -23,6 +23,9 @@ reload = [
     "watchdog>=3.0.0",
 ]
 
+[project.scripts]
+zibai = "zibai.__main__:command_line"
+
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
@@ -36,6 +39,11 @@ test = [
     "pytest>=7.4.3",
     "pytest-cov>=4.1.0",
 ]
+
+[tool.pdm.scripts]
+format = "ruff format ."
+lint = "ruff ."
+test = "pytest --cov=src/zibai"
 
 [tool.ruff]
 extend-select = ["I"]
