@@ -17,34 +17,34 @@ Inspiration from [Uvicorn](https://github.com/encode/uvicorn), [GUnicorn](https:
 ## Quick start
 
 ```bash
-python -m pip install zibai-server[gevent,reload]
+pip install zibai-server[gevent,reload]
 
 # Then run your WSGI application like kui, django, flask, etc.
-python -m zibai example:app
+zibai example:app
 ```
 
 Multiple processes:
 
 ```bash
-python -m zibai example:app -p 4
+zibai example:app -p 4
 ```
 
 Auto reload in development:
 
 ```bash
-python -m zibai example:app --watchfiles "*.py;.env"
+zibai example:app --watchfiles "*.py;.env"
 ```
 
 Use app factory:
 
 ```bash
-python -m zibai example:create_app --call
+zibai example:create_app --call
 ```
 
 Use `--help` to see all available options.
 
 ```
-usage: __main__.py [-h] [--call] [--listen LISTEN [LISTEN ...]] [--subprocess SUBPROCESS] [--no-gevent] [--max-workers MAX_WORKERS]
+usage: zibai [-h] [--call] [--listen LISTEN [LISTEN ...]] [--subprocess SUBPROCESS] [--no-gevent] [--max-workers MAX_WORKERS]
                    [--watchfiles WATCHFILES] [--backlog BACKLOG] [--dualstack-ipv6] [--unix-socket-perms UNIX_SOCKET_PERMS]
                    [--h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE] [--max-request-pre-process MAX_REQUEST_PRE_PROCESS]
                    [--graceful-exit-timeout GRACEFUL_EXIT_TIMEOUT] [--url-scheme URL_SCHEME] [--url-prefix URL_PREFIX]
