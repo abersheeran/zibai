@@ -1,5 +1,6 @@
 import os
 import signal
+import sys
 import threading
 import time
 from contextlib import nullcontext
@@ -224,7 +225,9 @@ class MultiProcessManager:
             return
         logger.info("Received SIGINT, quickly exiting")
         self.should_exit.set()
-        self.terminate_all_quickly()
+        # On Windows Ctrl+C is automatically sent to all child processes.
+        if sys.platform != "win32":
+            self.terminate_all_quickly()
 
     def handle_term(self) -> None:
         logger.info("Received SIGTERM, exiting")
@@ -234,7 +237,9 @@ class MultiProcessManager:
     def handle_break(self) -> None:
         logger.info("Received SIGBREAK, exiting")
         self.should_exit.set()
-        self.terminate_all()
+        # On Windows, Ctrl+Break is automatically sent to all child processes.
+        if sys.platform != "win32":
+            self.terminate_all()
 
     def handle_hup(self) -> None:
         logger.info("Received SIGHUP, restarting processes")

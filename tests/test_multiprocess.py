@@ -17,14 +17,11 @@ def test_multiprocess() -> None:
     """
     Ensure that the MultiProcessManager works as expected.
     """
-    if sys.platform == "win32":
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
-        signal.signal(signal.SIGBREAK, signal.SIG_IGN)
-
     supervisor = MultiProcessManager(2, ProcessParameters(while_true))
     threading.Thread(target=supervisor.mainloop, daemon=True).start()
     time.sleep(1)
-    supervisor.handle_int()
+    supervisor.terminate_all_quickly()
+    supervisor.join_all()
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="platform unsupports SIGHUP")
@@ -39,7 +36,7 @@ def test_multiprocess_sighup() -> None:
     supervisor.signal_queue.append(signal.SIGHUP)
     time.sleep(1)
     assert pids != [p.pid for p in supervisor.processes]
-    supervisor.handle_int()
+    supervisor.terminate_all_quickly()
     supervisor.join_all()
 
 
@@ -55,7 +52,7 @@ def test_multiprocess_sigttin() -> None:
     supervisor.signal_queue.append(signal.SIGTTIN)
     time.sleep(1)
     assert len(supervisor.processes) == 3
-    supervisor.handle_int()
+    supervisor.terminate_all_quickly()
     supervisor.join_all()
 
 
@@ -74,5 +71,5 @@ def test_multiprocess_sigttou() -> None:
     supervisor.signal_queue.append(signal.SIGTTOU)
     time.sleep(1)
     assert len(supervisor.processes) == 1
-    supervisor.handle_int()
+    supervisor.terminate_all_quickly()
     supervisor.join_all()
