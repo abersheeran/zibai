@@ -123,7 +123,13 @@ class Process:
 
 
 class MultiProcessManager:
-    def __init__(self, processes_num: int, process_parameters: ProcessParameters):
+    def __init__(
+        self,
+        processes_num: int,
+        process_parameters: ProcessParameters,
+        join_timeout: float | None = None,
+    ):
+        self.join_timeout = join_timeout
         self.processes_num = processes_num
         self.process_parameters = process_parameters
         self.processes: list[Process] = []
@@ -157,9 +163,9 @@ class MultiProcessManager:
         for process in self.processes:
             process.terminate_quickly()
 
-    def join_all(self, timeout: float | None = None) -> None:
+    def join_all(self) -> None:
         for process in self.processes:
-            process.join(timeout)
+            process.join(self.join_timeout)
 
     def restart_all(self) -> None:
         for idx, process in enumerate(tuple(self.processes)):
@@ -267,8 +273,11 @@ def multiprocess(
     processes_num: int,
     process_parameters: ProcessParameters,
     watchfiles: str | None,
+    join_timeout: float | None = None,
 ) -> None:
-    processes_manager = MultiProcessManager(processes_num, process_parameters)
+    processes_manager = MultiProcessManager(
+        processes_num, process_parameters, join_timeout
+    )
 
     if watchfiles is not None:
         from .reloader import listen_for_changes
