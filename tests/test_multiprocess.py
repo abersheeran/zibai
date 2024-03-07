@@ -1,7 +1,7 @@
 import signal
 import sys
-import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from zibai.multiprocess import MultiProcessManager, ProcessParameters
@@ -19,12 +19,13 @@ def multi_process_manager():
     multi_process_manager = MultiProcessManager(
         2, ProcessParameters(while_true), join_timeout=5
     )
-    threading.Thread(target=multi_process_manager.mainloop, daemon=True).start()
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(multi_process_manager.mainloop)
     time.sleep(1)
     yield multi_process_manager
     multi_process_manager.should_exit.set()
     multi_process_manager.terminate_all()
-    multi_process_manager.join_all()
+    future.result()
 
 
 @pytest.mark.skipif(
