@@ -6,12 +6,9 @@ import time
 import pytest
 from zibai.multiprocess import MultiProcessManager, ProcessParameters
 
-if sys.platform == "win32":
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-    signal.signal(signal.SIGBREAK, signal.SIG_IGN)
-
 
 def while_true():
+    signal.signal(signal.SIGINT, lambda sig, frame: sys.exit(0))
     while True:
         time.sleep(1)
 
@@ -20,6 +17,10 @@ def test_multiprocess() -> None:
     """
     Ensure that the MultiProcessManager works as expected.
     """
+    if sys.platform == "win32":
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGBREAK, signal.SIG_IGN)
+
     supervisor = MultiProcessManager(2, ProcessParameters(while_true))
     threading.Thread(target=supervisor.mainloop, daemon=True).start()
     time.sleep(1)
