@@ -14,8 +14,8 @@ def while_true():
         time.sleep(1)
 
 
-@pytest.fixture
-def multi_process_manager():
+@pytest.fixture(params=[signal.SIGINT, signal.SIGTERM])
+def multi_process_manager(request):
     multi_process_manager = MultiProcessManager(
         2, ProcessParameters(while_true), join_timeout=5
     )
@@ -24,7 +24,10 @@ def multi_process_manager():
     time.sleep(1)
     yield multi_process_manager
     multi_process_manager.should_exit.set()
-    multi_process_manager.terminate_all()
+    if request.param == signal.SIGTERM:
+        multi_process_manager.terminate_all()
+    else:
+        multi_process_manager.terminate_all_quickly()
     future.result()
 
 
