@@ -14,6 +14,10 @@ def while_true():
         time.sleep(1)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="In Windows, Ctrl+C/Ctrl+Break will sent to the parent process.",
+)
 def test_multiprocess() -> None:
     """
     Ensure that the MultiProcessManager works as expected.
