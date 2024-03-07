@@ -20,10 +20,10 @@ def hello_world_app(environ, start_response):
 
 @pytest.mark.parametrize("backlog", [10, None])
 def test_hello_world_app(
-    exit_event: threading.Event,
-    bind_socket: socket.socket,
+    socket_and_event: tuple[socket.socket, threading.Event],
     backlog: int | None,
 ) -> None:
+    bind_socket, exit_event = socket_and_event
     if backlog is None:
         bind_socket.listen()
     else:

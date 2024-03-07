@@ -1,5 +1,6 @@
 import socket
 import threading
+import time
 
 import pytest
 
@@ -17,9 +18,10 @@ def bind_socket(request):
 
 
 @pytest.fixture
-def exit_event():
+def socket_and_event(bind_socket):
     exit_event = threading.Event()
     try:
-        yield exit_event
+        yield bind_socket, exit_event
     finally:
         exit_event.set()
+        time.sleep(0.15)
