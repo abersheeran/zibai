@@ -2,7 +2,6 @@ import os
 import select
 import socket
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any, Callable, Generator
@@ -57,7 +56,6 @@ def serve(
     bind_sockets: list[socket.socket],
     max_workers: int,
     graceful_exit: threading.Event,
-    graceful_exit_timeout: float = 10,
     url_scheme: str = "http",
     script_name: str | None = None,
     before_serve_hook: Callable[[], None] = lambda: None,
@@ -77,10 +75,6 @@ def serve(
             before_graceful_exit_hook()
         except Exception:  # pragma: no cover
             logger.exception("Exception in `before_graceful_exit` callback")
-        finally:
-            time.sleep(graceful_exit_timeout)
-            logger.info("Graceful exit timeout, force exit")
-            os.kill(os.getpid(), 9)
 
     threading.Thread(target=_handle_exit_event, daemon=True).start()
 

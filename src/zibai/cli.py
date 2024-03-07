@@ -37,7 +37,6 @@ class Options:
     unix_socket_perms: int = 0o600
     h11_max_incomplete_event_size: int | None = None
     max_request_pre_process: int | None = None
-    graceful_exit_timeout: float = 10
 
     # WSGI environment settings
     url_scheme: str = "http"
@@ -265,12 +264,6 @@ def parse_args(args: Sequence[str]) -> Options:
         required=False,
     )
     parser.add_argument(
-        "--graceful-exit-timeout",
-        default=Options.default_value("graceful_exit_timeout"),
-        type=float,
-        help="graceful exit timeout",
-    )
-    parser.add_argument(
         "--url-scheme",
         default=Options.default_value("url_scheme"),
         help="url scheme; will be passed to WSGI app as wsgi.url_scheme",
@@ -393,7 +386,6 @@ def main(options: Options, *, is_main: bool = True) -> None:
         bind_sockets=options.sockets,
         max_workers=options.max_workers,
         graceful_exit=graceful_exit,
-        graceful_exit_timeout=options.graceful_exit_timeout,
         url_scheme=options.url_scheme,
         script_name=options.url_prefix,
         before_serve_hook=options.get_before_serve_hook(),
