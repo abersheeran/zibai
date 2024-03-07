@@ -14,7 +14,7 @@ def while_true():
         time.sleep(1)
 
 
-@pytest.fixture(params=[signal.SIGINT, signal.SIGTERM])
+@pytest.fixture
 def multi_process_manager(request):
     multi_process_manager = MultiProcessManager(
         2, ProcessParameters(while_true), join_timeout=5
@@ -24,10 +24,7 @@ def multi_process_manager(request):
     time.sleep(1)
     yield multi_process_manager
     multi_process_manager.should_exit.set()
-    if request.param == signal.SIGTERM:
-        multi_process_manager.terminate_all()
-    else:
-        multi_process_manager.terminate_all_quickly()
+    multi_process_manager.terminate_all_quickly()
     future.result()
 
 
@@ -39,6 +36,8 @@ def test_multiprocess(multi_process_manager: MultiProcessManager) -> None:
     """
     Ensure that the MultiProcessManager works as expected.
     """
+    multi_process_manager.should_exit.set()
+    multi_process_manager.terminate_all()
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="platform unsupports SIGHUP")
