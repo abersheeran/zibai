@@ -14,71 +14,62 @@ def while_true():
         time.sleep(1)
 
 
+@pytest.fixture
+def multi_process_manager():
+    multi_process_manager = MultiProcessManager(
+        2, ProcessParameters(while_true), join_timeout=5
+    )
+    threading.Thread(target=multi_process_manager.mainloop, daemon=True).start()
+    time.sleep(1)
+    yield multi_process_manager
+    multi_process_manager.should_exit.set()
+    multi_process_manager.terminate_all()
+    multi_process_manager.join_all()
+
+
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="In Windows, Ctrl+C/Ctrl+Break will sent to the parent process.",
 )
-def test_multiprocess() -> None:
+def test_multiprocess(multi_process_manager: MultiProcessManager) -> None:
     """
     Ensure that the MultiProcessManager works as expected.
     """
-    supervisor = MultiProcessManager(2, ProcessParameters(while_true))
-    threading.Thread(target=supervisor.mainloop, daemon=True).start()
-    time.sleep(1)
-    supervisor.should_exit.set()
-    supervisor.terminate_all()
-    supervisor.join_all()
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="platform unsupports SIGHUP")
-def test_multiprocess_sighup() -> None:
+def test_multiprocess_sighup(multi_process_manager: MultiProcessManager) -> None:
     """
     Ensure that the SIGHUP signal is handled as expected.
     """
-    supervisor = MultiProcessManager(2, ProcessParameters(while_true))
-    threading.Thread(target=supervisor.mainloop, daemon=True).start()
+    pids = [p.pid for p in multi_process_manager.processes]
+    multi_process_manager.signal_queue.append(signal.SIGHUP)
     time.sleep(1)
-    pids = [p.pid for p in supervisor.processes]
-    supervisor.signal_queue.append(signal.SIGHUP)
-    time.sleep(1)
-    assert pids != [p.pid for p in supervisor.processes]
-    supervisor.should_exit.set()
-    supervisor.terminate_all()
-    supervisor.join_all()
+    assert pids != [p.pid for p in multi_process_manager.processes]
 
 
 @pytest.mark.skipif(
     not hasattr(signal, "SIGTTIN"), reason="platform unsupports SIGTTIN"
 )
-def test_multiprocess_sigttin() -> None:
+def test_multiprocess_sigttin(multi_process_manager: MultiProcessManager) -> None:
     """
     Ensure that the SIGTTIN signal is handled as expected.
     """
-    supervisor = MultiProcessManager(2, ProcessParameters(while_true))
-    threading.Thread(target=supervisor.mainloop, daemon=True).start()
-    supervisor.signal_queue.append(signal.SIGTTIN)
+    multi_process_manager.signal_queue.append(signal.SIGTTIN)
     time.sleep(1)
-    assert len(supervisor.processes) == 3
-    supervisor.should_exit.set()
-    supervisor.terminate_all()
-    supervisor.join_all()
+    assert len(multi_process_manager.processes) == 3
 
 
 @pytest.mark.skipif(
     not hasattr(signal, "SIGTTOU"), reason="platform unsupports SIGTTOU"
 )
-def test_multiprocess_sigttou() -> None:
+def test_multiprocess_sigttou(multi_process_manager: MultiProcessManager) -> None:
     """
     Ensure that the SIGTTOU signal is handled as expected.
     """
-    supervisor = MultiProcessManager(2, ProcessParameters(while_true))
-    threading.Thread(target=supervisor.mainloop, daemon=True).start()
-    supervisor.signal_queue.append(signal.SIGTTOU)
+    multi_process_manager.signal_queue.append(signal.SIGTTOU)
     time.sleep(1)
-    assert len(supervisor.processes) == 1
-    supervisor.signal_queue.append(signal.SIGTTOU)
+    assert len(multi_process_manager.processes) == 1
+    multi_process_manager.signal_queue.append(signal.SIGTTOU)
     time.sleep(1)
-    assert len(supervisor.processes) == 1
-    supervisor.should_exit.set()
-    supervisor.terminate_all()
-    supervisor.join_all()
+    assert len(multi_process_manager.processes) == 1
