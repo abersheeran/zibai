@@ -15,7 +15,7 @@ def while_true():
 
 
 @pytest.fixture
-def multi_process_manager(request):
+def multi_process_manager():
     multi_process_manager = MultiProcessManager(
         2, ProcessParameters(while_true), join_timeout=5
     )
