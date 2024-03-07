@@ -20,6 +20,7 @@ def test_multiprocess() -> None:
     supervisor = MultiProcessManager(2, ProcessParameters(while_true))
     threading.Thread(target=supervisor.mainloop, daemon=True).start()
     time.sleep(1)
+    supervisor.should_exit.set()
     supervisor.terminate_all_quickly()
     supervisor.join_all()
 
@@ -36,6 +37,7 @@ def test_multiprocess_sighup() -> None:
     supervisor.signal_queue.append(signal.SIGHUP)
     time.sleep(1)
     assert pids != [p.pid for p in supervisor.processes]
+    supervisor.should_exit.set()
     supervisor.terminate_all_quickly()
     supervisor.join_all()
 
@@ -52,6 +54,7 @@ def test_multiprocess_sigttin() -> None:
     supervisor.signal_queue.append(signal.SIGTTIN)
     time.sleep(1)
     assert len(supervisor.processes) == 3
+    supervisor.should_exit.set()
     supervisor.terminate_all_quickly()
     supervisor.join_all()
 
@@ -71,5 +74,6 @@ def test_multiprocess_sigttou() -> None:
     supervisor.signal_queue.append(signal.SIGTTOU)
     time.sleep(1)
     assert len(supervisor.processes) == 1
+    supervisor.should_exit.set()
     supervisor.terminate_all_quickly()
     supervisor.join_all()
