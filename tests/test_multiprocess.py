@@ -9,6 +9,7 @@ from zibai.multiprocess import MultiProcessManager, ProcessParameters
 
 def while_true():
     signal.signal(signal.SIGINT, lambda sig, frame: sys.exit(0))
+    signal.signal(signal.SIGTERM, lambda sig, frame: sys.exit(0))
     while True:
         time.sleep(1)
 
@@ -21,7 +22,7 @@ def test_multiprocess() -> None:
     threading.Thread(target=supervisor.mainloop, daemon=True).start()
     time.sleep(1)
     supervisor.should_exit.set()
-    supervisor.terminate_all_quickly()
+    supervisor.terminate_all()
     supervisor.join_all()
 
 
@@ -38,7 +39,7 @@ def test_multiprocess_sighup() -> None:
     time.sleep(1)
     assert pids != [p.pid for p in supervisor.processes]
     supervisor.should_exit.set()
-    supervisor.terminate_all_quickly()
+    supervisor.terminate_all()
     supervisor.join_all()
 
 
@@ -55,7 +56,7 @@ def test_multiprocess_sigttin() -> None:
     time.sleep(1)
     assert len(supervisor.processes) == 3
     supervisor.should_exit.set()
-    supervisor.terminate_all_quickly()
+    supervisor.terminate_all()
     supervisor.join_all()
 
 
@@ -75,5 +76,5 @@ def test_multiprocess_sigttou() -> None:
     time.sleep(1)
     assert len(supervisor.processes) == 1
     supervisor.should_exit.set()
-    supervisor.terminate_all_quickly()
+    supervisor.terminate_all()
     supervisor.join_all()
