@@ -352,6 +352,7 @@ def main(options: Options, *, is_main: bool = True) -> None:
             options.subprocess,
             ProcessParameters(main, options, is_main=False),
             options.watchfiles,
+            options.graceful_exit_timeout,
         )
         return
 
@@ -393,7 +394,6 @@ def main(options: Options, *, is_main: bool = True) -> None:
         bind_sockets=options.sockets,
         max_workers=options.max_workers,
         graceful_exit=graceful_exit,
-        graceful_exit_timeout=options.graceful_exit_timeout,
         url_scheme=options.url_scheme,
         script_name=options.url_prefix,
         before_serve_hook=options.get_before_serve_hook(),

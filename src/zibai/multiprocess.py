@@ -122,7 +122,13 @@ class Process:
 
 
 class MultiProcessManager:
-    def __init__(self, processes_num: int, process_parameters: ProcessParameters):
+    def __init__(
+        self,
+        processes_num: int,
+        process_parameters: ProcessParameters,
+        join_timeout: float | None = None,
+    ):
+        self.join_timeout = join_timeout
         self.processes_num = processes_num
         self.process_parameters = process_parameters
         self.processes: list[Process] = []
@@ -156,9 +162,9 @@ class MultiProcessManager:
         for process in self.processes:
             process.terminate_quickly()
 
-    def join_all(self, timeout: float | None = None) -> None:
+    def join_all(self) -> None:
         for process in self.processes:
-            process.join(timeout)
+            process.join(self.join_timeout)
 
     def restart_all(self) -> None:
         for idx, process in enumerate(tuple(self.processes)):
@@ -224,7 +230,9 @@ class MultiProcessManager:
             return
         logger.info("Received SIGINT, quickly exiting")
         self.should_exit.set()
-        self.terminate_all_quickly()
+        # On Windows Ctrl+C is automatically sent to all child processes.
+        if os.name != "nt":
+            self.terminate_all_quickly()
 
     def handle_term(self) -> None:
         logger.info("Received SIGTERM, exiting")
@@ -234,7 +242,8 @@ class MultiProcessManager:
     def handle_break(self) -> None:
         logger.info("Received SIGBREAK, exiting")
         self.should_exit.set()
-        self.terminate_all()
+        # On Windows, Ctrl+Break is automatically sent to all child processes.
+        # So, we don't need to terminate all child processes here.
 
     def handle_hup(self) -> None:
         logger.info("Received SIGHUP, restarting processes")
@@ -262,8 +271,11 @@ def multiprocess(
     processes_num: int,
     process_parameters: ProcessParameters,
     watchfiles: str | None,
+    join_timeout: float | None = None,
 ) -> None:
-    processes_manager = MultiProcessManager(processes_num, process_parameters)
+    processes_manager = MultiProcessManager(
+        processes_num, process_parameters, join_timeout
+    )
 
     if watchfiles is not None:
         from .reloader import listen_for_changes
