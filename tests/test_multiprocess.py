@@ -16,20 +16,6 @@ def while_true():
         time.sleep(1)
 
 
-@pytest.fixture
-def multi_process_manager():
-    multi_process_manager = MultiProcessManager(
-        2, ProcessParameters(while_true), join_timeout=5
-    )
-    executor = ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(multi_process_manager.mainloop)
-    time.sleep(1)
-    yield multi_process_manager
-    multi_process_manager.should_exit.set()
-    multi_process_manager.terminate_all_quickly()
-    future.result()
-
-
 @new_console_in_windows
 def test_multiprocess() -> None:
     """
@@ -41,6 +27,36 @@ def test_multiprocess() -> None:
     executor = ThreadPoolExecutor(max_workers=1)
     future = executor.submit(multi_process_manager.mainloop)
     time.sleep(1)
+    multi_process_manager.should_exit.set()
+    multi_process_manager.terminate_all_quickly()
+    future.result()
+
+
+@new_console_in_windows
+def test_multiprocess_sigbreak() -> None:
+    """
+    Ensure that the SIGBREAK signal is handled as expected.
+    """
+    multi_process_manager = MultiProcessManager(
+        2, ProcessParameters(while_true), join_timeout=5
+    )
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(multi_process_manager.mainloop)
+    time.sleep(1)
+    multi_process_manager.should_exit.set()
+    multi_process_manager.terminate_all()
+    future.result()
+
+
+@pytest.fixture
+def multi_process_manager():
+    multi_process_manager = MultiProcessManager(
+        2, ProcessParameters(while_true), join_timeout=5
+    )
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(multi_process_manager.mainloop)
+    time.sleep(1)
+    yield multi_process_manager
     multi_process_manager.should_exit.set()
     multi_process_manager.terminate_all_quickly()
     future.result()
