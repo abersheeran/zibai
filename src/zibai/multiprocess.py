@@ -170,10 +170,9 @@ class MultiProcessManager:
         for idx, process in enumerate(tuple(self.processes)):
             process.terminate()
             process.join()
-            del self.processes[idx]
-            process = Process(self.process_parameters)
-            process.start()
-            self.processes.append(process)
+            new_process = Process(self.process_parameters)
+            new_process.start()
+            self.processes[idx] = new_process
 
     def on_watchfiles_reload(self) -> None:
         with self.reload_lock:
