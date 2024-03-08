@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from zibai.multiprocess import MultiProcessManager, ProcessParameters
 
+from .utils import new_console_in_windows
+
 
 def while_true():
     signal.signal(signal.SIGINT, lambda sig, frame: sys.exit(0))
@@ -28,16 +30,20 @@ def multi_process_manager():
     future.result()
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="In Windows, Ctrl+C/Ctrl+Break will sent to the parent process.",
-)
-def test_multiprocess(multi_process_manager: MultiProcessManager) -> None:
+@new_console_in_windows
+def test_multiprocess() -> None:
     """
     Ensure that the MultiProcessManager works as expected.
     """
+    multi_process_manager = MultiProcessManager(
+        2, ProcessParameters(while_true), join_timeout=5
+    )
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(multi_process_manager.mainloop)
+    time.sleep(1)
     multi_process_manager.should_exit.set()
-    multi_process_manager.terminate_all()
+    multi_process_manager.terminate_all_quickly()
+    future.result()
 
 
 @pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="platform unsupports SIGHUP")
