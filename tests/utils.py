@@ -3,7 +3,7 @@ import os
 from typing import Any, Callable
 
 
-def new_console_in_windows(test_function: Callable[[], Any]):
+def new_console_in_windows(test_function: Callable[[], Any]) -> Callable[[], Any]:
     if os.name != "nt":
         return test_function
 
@@ -12,7 +12,7 @@ def new_console_in_windows(test_function: Callable[[], Any]):
         import subprocess
         import sys
 
-        return subprocess.check_call(
+        subprocess.check_call(
             [
                 sys.executable,
                 "-c",
