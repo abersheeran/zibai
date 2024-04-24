@@ -144,7 +144,6 @@ if __name__ == "__main__":
     zibai.serve(
         app=app,
         bind_socket=your_socket,
-        backlog=None,
         max_workers=10,
         graceful_exit=exit_event,
         before_serve_hook=your_hook,
