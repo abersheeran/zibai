@@ -39,7 +39,7 @@ class H11Protocol:
 
     @property
     def header_sent(self) -> bool:
-        return self.c.our_state is not h11.IDLE
+        return self.c.our_state is not h11.SEND_RESPONSE
 
     def get_next_event(self):
         if self.c.their_state is h11.DONE:
@@ -201,7 +201,7 @@ class H11Protocol:
                 self.send_with_event(h11.Data(data=chunk))
 
             self.send_with_event(h11.EndOfMessage())
-        except Exception:
+        except BaseException:
             if self.header_sent:
                 raise
 

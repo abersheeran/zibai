@@ -95,7 +95,7 @@ def serve(
             for sock in r:
                 connection, address = sock.accept()
                 debug_logger.debug("Accepted connection from %s:%d", *address[:2])
-                future = executor.submit(
+                executor.submit(
                     handle_connection,
                     app,
                     connection,
@@ -104,5 +104,3 @@ def serve(
                     url_scheme=url_scheme,
                     script_name=script_name,
                 )
-                # raise exception in main thread if exception in threadpool
-                future.add_done_callback(lambda future: future.result())
