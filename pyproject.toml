@@ -42,14 +42,12 @@ test = [
 
 [tool.pdm.scripts]
 format = "ruff format ."
-lint = "ruff ."
+lint = "ruff check ."
 test = "pytest --cov=src/zibai"
-
-[tool.ruff]
-extend-select = ["I"]
 
 [tool.ruff.lint]
 ignore = ["E731"]
+extend-select = ["I"]
 
 [tool.coverage]
 ignores = [

@@ -1,6 +1,7 @@
 """
 https://peps.python.org/pep-3333/
 """
+
 from types import TracebackType
 from typing import (
     Any,
