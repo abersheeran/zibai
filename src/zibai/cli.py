@@ -2,7 +2,9 @@ import argparse
 import dataclasses
 import importlib
 import ipaddress
+import json
 import logging
+import logging.config
 import multiprocessing
 import os
 import signal
@@ -10,10 +12,11 @@ import socket
 import sys
 import threading
 from functools import reduce
+from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from .core import serve
-from .logger import logger
+from .logger import load_config, logger
 from .multiprocess import ProcessParameters, multiprocess
 from .wsgi_typing import WSGIApp
 
@@ -50,9 +53,11 @@ class Options:
 
     # Logging
     no_access_log: bool = False
+    logging_config_filepath: Path | None = None
 
     # After __post_init__
     sockets: list[socket.socket] = dataclasses.field(init=False)
+    logging_config: dict = dataclasses.field(init=False, default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.watchfiles is not None and self.subprocess <= 0:
@@ -62,6 +67,7 @@ class Options:
             raise ValueError("Dualstack ipv6 is not supported on this platform")
 
         self.init_sockets()
+        self.load_logging_config()
 
     @classmethod
     def default_value(cls, field_name: str) -> Any:
@@ -113,14 +119,22 @@ class Options:
         else:
             return lambda: None
 
+    def load_logging_config(self) -> None:
+        if self.logging_config_filepath is None:
+            self.logging_config = {}
+            return
+
+        if self.logging_config_filepath.name.endswith(".json"):
+            self.logging_config = json.loads(
+                self.logging_config_filepath.read_text(encoding="utf8")
+            )
+            return
+
     def configure_logging(self) -> None:
         if self.no_access_log:
             logging.getLogger("zibai.access").setLevel(logging.WARNING)
 
-        # Set default logging format.
-        logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-        )
+        logging.config.dictConfig(load_config(self.logging_config))
 
 
 def import_from_string(import_str: str) -> Any:
