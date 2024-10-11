@@ -137,13 +137,15 @@ def app(environ, start_response):
 if __name__ == "__main__":
     import threading
 
-    import zibai
+    from zibai import create_bind_socket
+    from zibai.core import serve
 
     exit_event = threading.Event()
+    sock = create_bind_socket("127.0.0.1:8000")
 
-    zibai.serve(
+    serve(
         app=app,
-        bind_socket=your_socket,
+        bind_socket=sock,
         max_workers=10,
         graceful_exit=exit_event,
         before_serve_hook=your_hook,

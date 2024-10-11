@@ -4,7 +4,7 @@ import time
 
 import h11
 import pytest
-from zibai import serve
+from zibai.core import serve
 
 
 def hello_world_app(environ, start_response):

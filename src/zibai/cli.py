@@ -5,19 +5,11 @@ import ipaddress
 import json
 import logging
 import logging.config
-import multiprocessing
-import os
-import signal
 import socket
-import sys
-import threading
-from functools import reduce
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from .core import serve
 from .logger import load_config, logger
-from .multiprocess import ProcessParameters, multiprocess
 from .wsgi_typing import WSGIApp
 
 
@@ -138,6 +130,8 @@ class Options:
 
 
 def import_from_string(import_str: str) -> Any:
+    from functools import reduce
+
     module_str, _, attrs_str = import_str.partition(":")
     if not module_str or not attrs_str:
         raise ValueError(
@@ -154,6 +148,8 @@ def create_bind_socket(
     dualstack_ipv6: bool = Options.default_value("dualstack_ipv6"),
     socket_type: int = socket.SOCK_STREAM,
 ) -> socket.socket:
+    import os
+
     if value.startswith("unix:"):
         if not hasattr(socket, "AF_UNIX"):
             raise ValueError("UNIX sockets are not supported on this platform")
@@ -328,9 +324,6 @@ def parse_args(args: Sequence[str]) -> Options:
     return Options(**options.__dict__)
 
 
-spawn = multiprocessing.get_context("spawn")
-
-
 def main(options: Options, *, is_main: bool = True) -> None:
     """
     Main entrypoint for running Zī Bái.
@@ -362,6 +355,8 @@ def main(options: Options, *, is_main: bool = True) -> None:
     application = options.get_application()
 
     if is_main and options.subprocess > 0:
+        from .multiprocess import ProcessParameters, multiprocess
+
         multiprocess(
             options.subprocess,
             ProcessParameters(main, options, is_main=False),
@@ -383,6 +378,11 @@ def main(options: Options, *, is_main: bool = True) -> None:
             application, options.max_request_pre_process
         )
 
+    import os
+    import signal
+    import sys
+    import threading
+
     graceful_exit = threading.Event()
 
     def handle_int(sig, frame) -> None:
@@ -402,6 +402,8 @@ def main(options: Options, *, is_main: bool = True) -> None:
 
     if is_main:
         logger.info("Run in single process mode [%d]", os.getpid())
+
+    from .core import serve
 
     serve(
         app=application,
