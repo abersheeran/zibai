@@ -202,6 +202,9 @@ class H11Protocol:
 
             self.send_with_event(h11.EndOfMessage())
         except BaseException:
+            error_logger.exception(
+                "Error while calling WSGI application", exc_info=sys.exc_info()
+            )
             if self.header_sent:
                 raise
 
@@ -218,9 +221,6 @@ class H11Protocol:
             self.send_with_event(h11.Data(data=b"Internal Server Error"))
             self.send_with_event(h11.EndOfMessage())
 
-            error_logger.exception(
-                "Error while calling WSGI application", exc_info=sys.exc_info()
-            )
             log_http(environ, 500)
             raise
         finally:
