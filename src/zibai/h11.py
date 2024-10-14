@@ -184,14 +184,17 @@ class H11Protocol:
             iterable = wsgi_app(environ, self.start_response)
             iterator = iter(iterable)
 
-            chunk = next(iterator)
+            try:
+                chunk = next(iterator)
+            except StopIteration:
+                # WSGI app return a empty generator
+                chunk = b""
+
             if self.response_buffer is None:
                 raise RuntimeError("start_response() was not called")
 
-            status_code = self.response_buffer[0]
-            self.send_with_event(
-                h11.Response(status_code=status_code, headers=self.response_buffer[1])
-            )
+            status_code, headers = self.response_buffer
+            self.send_with_event(h11.Response(status_code=status_code, headers=headers))
 
             log_http(environ, status_code)
 
