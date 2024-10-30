@@ -34,9 +34,6 @@ class H11Protocol:
     # State variables
     response_buffer: tuple[int, list[tuple[bytes, bytes]]] | None = None
 
-    def __post_init__(self):
-        self.s.settimeout(1)  # For graceful exit
-
     @property
     def header_sent(self) -> bool:
         return self.c.our_state is not h11.SEND_RESPONSE

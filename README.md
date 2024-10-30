@@ -44,12 +44,15 @@ zibai example:create_app --call
 Use `--help` to see all available options.
 
 ```
-usage: zibai [-h] [--call] [--listen LISTEN [LISTEN ...]] [--subprocess SUBPROCESS] [--no-gevent] [--max-workers MAX_WORKERS]
-                   [--watchfiles WATCHFILES] [--backlog BACKLOG] [--dualstack-ipv6] [--unix-socket-perms UNIX_SOCKET_PERMS]
-                   [--h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE] [--max-request-pre-process MAX_REQUEST_PRE_PROCESS]
-                   [--graceful-exit-timeout GRACEFUL_EXIT_TIMEOUT] [--url-scheme URL_SCHEME] [--url-prefix URL_PREFIX]
-                   [--before-serve BEFORE_SERVE] [--before-graceful-exit BEFORE_GRACEFUL_EXIT] [--before-died BEFORE_DIED] [--no-access-log]
-                   app
+usage: zibai [-h] [--call] [--listen LISTEN [LISTEN ...]] [--subprocess SUBPROCESS] [--no-gevent]
+             [--max-workers MAX_WORKERS] [--watchfiles WATCHFILES] [--backlog BACKLOG] [--socket-timeout SOCKET_TIMEOUT]
+             [--dualstack-ipv6] [--unix-socket-perms UNIX_SOCKET_PERMS]
+             [--h11-max-incomplete-event-size H11_MAX_INCOMPLETE_EVENT_SIZE]
+             [--max-request-pre-process MAX_REQUEST_PRE_PROCESS] [--graceful-exit-timeout GRACEFUL_EXIT_TIMEOUT]
+             [--url-scheme URL_SCHEME] [--url-prefix URL_PREFIX] [--before-serve BEFORE_SERVE]
+             [--before-graceful-exit BEFORE_GRACEFUL_EXIT] [--before-died BEFORE_DIED] [--no-access-log]
+             [--logging-config-filepath LOGGING_CONFIG_FILEPATH]
+             app
 
 positional arguments:
   app                   WSGI app
@@ -67,6 +70,8 @@ options:
   --watchfiles WATCHFILES
                         watch files for changes and restart workers (default: None)
   --backlog BACKLOG     listen backlog (default: None)
+  --socket-timeout SOCKET_TIMEOUT
+                        socket timeout (other means keepalive timeout) (default: None)
   --dualstack-ipv6      enable dualstack ipv6 (default: False)
   --unix-socket-perms UNIX_SOCKET_PERMS
                         unix socket permissions (default: 600)
@@ -79,8 +84,7 @@ options:
   --url-scheme URL_SCHEME
                         url scheme; will be passed to WSGI app as wsgi.url_scheme (default: http)
   --url-prefix URL_PREFIX
-                        url prefix; will be passed to WSGI app as SCRIPT_NAME, if not specified, use environment variable SCRIPT_NAME (default:
-                        None)
+                        url prefix; will be passed to WSGI app as SCRIPT_NAME, if not specified, use environment variable SCRIPT_NAME (default: None)
   --before-serve BEFORE_SERVE
                         callback to run before serving requests (default: None)
   --before-graceful-exit BEFORE_GRACEFUL_EXIT
@@ -88,6 +92,8 @@ options:
   --before-died BEFORE_DIED
                         callback to run before exiting (default: None)
   --no-access-log       disable access log (default: False)
+  --logging-config-filepath LOGGING_CONFIG_FILEPATH
+                        logging config file path (default: None)
 ```
 
 ## Use programmatically
@@ -193,7 +199,7 @@ for handler in access_logger.handlers:
 
 Zī Bái will handle the following signals:
 
-- `SIGINT`: Trigger quick exit (Just call `sys.exit(0)`). If subprocess is enabled, then the main process will wait for the subprocesses to exit quickly.
+- `SIGINT`: Trigger quick exit (forcefully close all connections). If subprocess is enabled, then the main process will wait for the subprocesses to exit quickly.
 - `SIGTERM`: Trigger graceful exit. If subprocess is enabled, then the main process will wait for the subprocesses to exit gracefully.
 
 There are also some signals that will only be processed by the main process when subprocess is enabled.

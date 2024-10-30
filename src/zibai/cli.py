@@ -28,6 +28,7 @@ class Options:
     watchfiles: str | None = None
 
     backlog: int | None = None
+    socket_timeout: float = 5
     dualstack_ipv6: bool = False
     unix_socket_perms: int = 0o600
     h11_max_incomplete_event_size: int | None = None
@@ -252,6 +253,12 @@ def parse_args(args: Sequence[str]) -> Options:
         required=False,
     )
     parser.add_argument(
+        "--socket-timeout",
+        type=float,
+        help="socket timeout (other means keepalive timeout)",
+        required=False,
+    )
+    parser.add_argument(
         "--dualstack-ipv6",
         default=Options.default_value("dualstack_ipv6"),
         action="store_true",
@@ -311,6 +318,12 @@ def parse_args(args: Sequence[str]) -> Options:
         default=Options.default_value("no_access_log"),
         action="store_true",
         help="disable access log",
+    )
+    parser.add_argument(
+        "--logging-config-filepath",
+        help="logging config file path",
+        type=Path,
+        required=False,
     )
     options = parser.parse_args(args)
 
@@ -380,20 +393,17 @@ def main(options: Options, *, is_main: bool = True) -> None:
 
     import os
     import signal
-    import sys
     import threading
 
     graceful_exit = threading.Event()
+    quickly_exit = threading.Event()
 
     def handle_int(sig, frame) -> None:
-        logger.info("Received SIGINT, qucikly exiting")
+        logger.info("Received SIGINT, quickly exiting")
         graceful_exit.set()
-        sys.exit(0)
+        quickly_exit.set()
 
     def handle_term(sig, frame) -> None:
-        if graceful_exit.is_set():
-            logger.info("Received second SIGTERM, quickly exiting")
-            sys.exit(0)
         logger.info("Received SIGTERM, gracefully exiting")
         graceful_exit.set()
 
@@ -410,9 +420,12 @@ def main(options: Options, *, is_main: bool = True) -> None:
         bind_sockets=options.sockets,
         max_workers=options.max_workers,
         graceful_exit=graceful_exit,
+        graceful_exit_timeout=options.graceful_exit_timeout,
+        quickly_exit=quickly_exit,
         url_scheme=options.url_scheme,
         script_name=options.url_prefix,
         before_serve_hook=options.get_before_serve_hook(),
         before_graceful_exit_hook=options.get_before_graceful_exit_hook(),
         before_died_hook=options.get_before_died_hook(),
+        socket_timeout=options.socket_timeout,
     )

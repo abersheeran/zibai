@@ -234,12 +234,12 @@ class MultiProcessManager:
             self.terminate_all_quickly()
 
     def handle_term(self) -> None:
-        logger.info("Received SIGTERM, exiting")
+        logger.info("Received SIGTERM, gracefully exiting")
         self.should_exit.set()
         self.terminate_all()
 
     def handle_break(self) -> None:
-        logger.info("Received SIGBREAK, exiting")
+        logger.info("Received SIGBREAK, gracefully exiting")
         self.should_exit.set()
         # On Windows, Ctrl+Break is automatically sent to all child processes.
         # So, we don't need to terminate all child processes here.
