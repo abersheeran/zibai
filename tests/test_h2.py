@@ -30,6 +30,32 @@ def echo_app(environ, start_response):
             return
 
 
+def method_app(environ, start_response):
+    method = environ["REQUEST_METHOD"].upper()
+    if method == "HEAD":
+        start_response("200 OK", [("Content-Length", "12")])
+        return [b""]
+    if method == "OPTIONS":
+        start_response(
+            "204 No Content",
+            [("Allow", "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS"), ("Content-Length", "0")],
+        )
+        return [b""]
+    if method in {"GET", "DELETE"}:
+        start_response("200 OK", [("Content-Length", "0")])
+        return [b""]
+    if method in {"POST", "PUT", "PATCH"}:
+        # echo
+        start_response("200 OK", [])
+        for chunk in environ["wsgi.input"]:
+            if chunk:
+                yield chunk
+            else:
+                return
+    start_response("405 Method Not Allowed", [("Content-Length", "0")])
+    return [b""]
+
+
 @pytest.mark.parametrize("backlog", [10, None])
 def test_h2c_hello_world(
     socket_and_event: tuple[socket.socket, threading.Event], backlog: int | None

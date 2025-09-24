@@ -40,11 +40,13 @@ class H2Protocol:
         self.script_name = script_name
 
         self.c = h2.connection.H2Connection(config=H2Configuration(client_side=False))
+        self.send_lock = threading.Lock()
 
     def _send_outbound(self) -> None:
-        data = self.c.data_to_send()
-        if data:
-            self.s.sendall(data)
+        with self.send_lock:
+            data = self.c.data_to_send()
+            if data:
+                self.s.sendall(data)
 
     # No explicit preface discard: pass the preface to h2 via receive_data
 
@@ -166,9 +168,12 @@ class H2Protocol:
                 headers.append((k, v))
             # debug
             print('[h2] sending headers', headers)
-            self.c.send_headers(stream_id, headers, end_stream=False)
+            with self.send_lock:
+                self.c.send_headers(stream_id, headers, end_stream=False)
+                data_to_send = self.c.data_to_send()
+                if data_to_send:
+                    self.s.sendall(data_to_send)
             header_sent["value"] = True
-            self._send_outbound()
 
         # Attach helper to the instance for later use within call_wsgi
         start_response._send_headers_if_needed = _send_headers_if_needed  # type: ignore[attr-defined]
@@ -193,8 +198,11 @@ class H2Protocol:
             to_send = data[idx : idx + window]
             idx += len(to_send)
             # Only mark end_stream if this is the last piece
-            self.c.send_data(stream_id, to_send, end_stream=end_stream and idx >= len(data))
-            self._send_outbound()
+            with self.send_lock:
+                self.c.send_data(stream_id, to_send, end_stream=end_stream and idx >= len(data))
+                outbound = self.c.data_to_send()
+                if outbound:
+                    self.s.sendall(outbound)
             if len(to_send) == 0:
                 # End stream with empty data
                 break
