@@ -377,24 +377,35 @@ def http2_protocol(
             if not data:
                 raise ConnectionClosed
             events = h.c.receive_data(data)
-            print('[h2] got events:', [e.__class__.__name__ for e in events])
-            i = 0
-            while i < len(events):
-                event = events[i]
-                debug_logger.debug("[h2] recv event from %s:%d: %r", *h.peername, event)
-                if isinstance(event, h2.events.RequestReceived):
-                    print('[h2] RequestReceived, stream', event.stream_id)
-                    # Collect any remaining events from this batch for this stream
-                    remaining = events[i + 1 :]
-                    h.call_wsgi_on_stream(app, event.stream_id, event.headers, initial_events=remaining)  # type: ignore[arg-type]
-                    break
-                elif isinstance(event, h2.events.ConnectionTerminated):
+            # Group events per stream for any newly received requests.
+            stream_order: list[int] = []
+            stream_headers: dict[int, list[tuple[bytes, bytes]]] = {}
+            stream_evmap: dict[int, list[Any]] = {}
+            for ev in events:
+                debug_logger.debug("[h2] recv event from %s:%d: %r", *h.peername, ev)
+                if isinstance(ev, h2.events.RequestReceived):
+                    stream_id = ev.stream_id
+                    stream_order.append(stream_id)
+                    stream_headers[stream_id] = ev.headers  # type: ignore[assignment]
+                    stream_evmap.setdefault(stream_id, [])
+                elif isinstance(ev, (h2.events.DataReceived, h2.events.StreamEnded)):
+                    stream_evmap.setdefault(ev.stream_id, []).append(ev)
+                elif isinstance(ev, h2.events.ConnectionTerminated):
                     raise ConnectionClosed
-                elif isinstance(event, h2.events.DataReceived):
-                    # If body arrives before we try to read it, ack to free window
-                    h.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
-                # Other events can be safely ignored for minimal server
-                i += 1
+                elif isinstance(ev, h2.events.RemoteSettingsChanged):
+                    # ignore
+                    pass
+                elif isinstance(ev, h2.events.SettingsAcknowledged):
+                    # ignore
+                    pass
+                else:
+                    # ignore other events
+                    pass
+
+            # Serve each new request detected in this batch synchronously.
+            for sid in stream_order:
+                h.call_wsgi_on_stream(app, sid, stream_headers[sid], initial_events=stream_evmap.get(sid, []))  # type: ignore[arg-type]
+
             h._send_outbound()
         except socket.timeout:
             continue
