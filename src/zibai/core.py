@@ -11,6 +11,7 @@ from typing import Any, Callable, Generator, Protocol
 from typing import cast as typing_cast
 
 from .h11 import http11_protocol
+from .h2 import H2_CLIENT_PREFACE, http2_protocol
 from .logger import debug_logger, logger
 from .utils import unicode_to_wsgi
 from .wsgi_typing import WSGIApp
@@ -188,14 +189,28 @@ def handle_connection(
     with connection:
         try:
             connections.add(connection)
+            # Protocol detection: HTTP/2 (h2c) preface vs HTTP/1.1
+            try:
+                preface_peek = connection.recv(len(H2_CLIENT_PREFACE), socket.MSG_PEEK)
+            except (BlockingIOError, TimeoutError, ConnectionError, OSError):
+                preface_peek = b""
 
-            http11_protocol(
-                app,
-                connection,
-                graceful_exit,
-                url_scheme=url_scheme,
-                script_name=script_name,
-            )
+            if preface_peek == H2_CLIENT_PREFACE:
+                http2_protocol(
+                    app,
+                    connection,
+                    graceful_exit,
+                    url_scheme=url_scheme,
+                    script_name=script_name,
+                )
+            else:
+                http11_protocol(
+                    app,
+                    connection,
+                    graceful_exit,
+                    url_scheme=url_scheme,
+                    script_name=script_name,
+                )
         except ConnectionError:
             pass  # client closed connection, nothing to do
         finally:

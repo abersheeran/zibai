@@ -1,0 +1,354 @@
+import socket
+import sys
+import threading
+from typing import Any, Callable
+
+import h2.connection
+import h2.events
+from h2.settings import SettingCodes
+
+from .const import SERVER_NAME
+from .logger import debug_logger, error_logger, log_http
+from .utils import Input
+from .wsgi_typing import Environ, ExceptionInfo, WSGIApp
+
+
+H2_CLIENT_PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+
+
+class ConnectionClosed(Exception):
+    pass
+
+
+class H2Protocol:
+    def __init__(
+        self,
+        *,
+        sock: socket.socket,
+        peername: tuple[str, int],
+        sockname: tuple[str, int],
+        graceful_exit: threading.Event,
+        url_scheme: str,
+        script_name: str,
+    ) -> None:
+        self.s = sock
+        self.peername = peername
+        self.sockname = sockname
+        self.graceful_exit = graceful_exit
+        self.url_scheme = url_scheme
+        self.script_name = script_name
+
+        self.c = h2.connection.H2Connection(client_side=False)
+
+    def _send_outbound(self) -> None:
+        data = self.c.data_to_send()
+        if data:
+            self.s.sendall(data)
+
+    def _discard_client_preface(self) -> None:
+        # The client preface must be consumed by the server.
+        preface = self.s.recv(len(H2_CLIENT_PREFACE))
+        if preface != H2_CLIENT_PREFACE:
+            # If it doesn't match, raise to fallback logic.
+            raise ConnectionClosed
+
+    def _build_environ(self, headers: list[tuple[bytes, bytes]]) -> Environ:
+        method = "GET"
+        path = "/"
+        query = ""
+        http_scheme = self.url_scheme
+
+        server_name, server_port = self.sockname
+        remote_name, remote_port = self.peername
+
+        environ: Environ = {
+            "REQUEST_METHOD": method,
+            "SCRIPT_NAME": self.script_name,
+            "SERVER_NAME": server_name,
+            "SERVER_PORT": str(server_port),
+            "REMOTE_ADDR": remote_name,
+            "REMOTE_PORT": str(remote_port),
+            "REQUEST_URI": "",
+            "PATH_INFO": "",
+            "QUERY_STRING": "",
+            "SERVER_PROTOCOL": "HTTP/2.0",
+            "wsgi.version": (1, 0),
+            "wsgi.url_scheme": http_scheme,
+            # wsgi.input filled later
+            "wsgi.input": Input(lambda: b""),
+            "wsgi.errors": sys.stderr,
+            "wsgi.multithread": True,
+            "wsgi.multiprocess": True,
+            "wsgi.run_once": False,
+        }
+
+        for name, value in headers:
+            n = name.decode("latin1")
+            v = value.decode("latin1")
+            if n == ":method":
+                method = v
+                environ["REQUEST_METHOD"] = method
+            elif n == ":path":
+                if "?" in v:
+                    path, query = v.split("?", 1)
+                else:
+                    path, query = v, ""
+                environ["REQUEST_URI"] = v
+            elif n == ":scheme":
+                http_scheme = v
+                environ["wsgi.url_scheme"] = http_scheme
+            elif n == "content-type":
+                environ["CONTENT_TYPE"] = v
+            elif n == "content-length":
+                environ["CONTENT_LENGTH"] = v
+            else:
+                if not n.startswith(":"):
+                    http_name = "HTTP_" + n.upper().replace("-", "_")
+                    if http_name not in environ:
+                        environ[http_name] = v
+                    else:
+                        environ[http_name] += "," + v
+
+        # SCRIPT_NAME and PATH_INFO handling
+        environ["SCRIPT_NAME"] = self.script_name
+        if path == self.script_name:
+            path_info = ""
+        else:
+            url_prefix_with_trailing_slash = self.script_name + "/"
+            if path.startswith(url_prefix_with_trailing_slash):
+                path_info = path[len(self.script_name) :]
+            else:
+                path_info = path
+        environ["PATH_INFO"] = path_info
+        environ["QUERY_STRING"] = query
+
+        return environ  # type: ignore
+
+    def _start_response_factory(
+        self, stream_id: int
+    ) -> Callable[[str, list[tuple[str, str]], ExceptionInfo | None], Callable[[bytes], Any]]:
+        header_sent = {"value": False}
+        response_buffer: dict[str, Any] = {"status": 200, "headers": []}
+
+        def start_response(
+            status: str,
+            headers: list[tuple[str, str]],
+            exc_info: ExceptionInfo | None = None,
+        ) -> Callable[[bytes], Any]:
+            if exc_info is not None and header_sent["value"]:
+                raise exc_info[1].with_traceback(exc_info[2])
+            if header_sent["value"]:
+                raise RuntimeError("start_response() was already called")
+
+            status_code_str, _ = status.split(" ", 1)
+            if not status_code_str.isdigit():
+                raise RuntimeError(f"Invalid status: {status}")
+            response_buffer["status"] = int(status_code_str)
+
+            # Normalize headers to lowercase, add server
+            norm_headers = [(k.lower(), v) for k, v in headers]
+            norm_headers.append(("server", SERVER_NAME.decode("latin1")))
+            response_buffer["headers"] = norm_headers
+
+            def write(chunk: bytes) -> None:
+                # This write callable is rarely used; we'll send in the response loop.
+                self._send_data_with_flow_control(stream_id, chunk, end_stream=False)
+
+            return write
+
+        def _send_headers_if_needed() -> None:
+            if header_sent["value"]:
+                return
+            # Build HTTP/2 headers
+            headers = [(":status", str(response_buffer["status"]))]
+            for k, v in response_buffer["headers"]:
+                # Exclude hop-by-hop headers automatically ignored in h2
+                if k.lower() in {"connection", "transfer-encoding"}:
+                    continue
+                headers.append((k, v))
+            self.c.send_headers(stream_id, headers, end_stream=False)
+            header_sent["value"] = True
+            self._send_outbound()
+
+        # Attach helper to the instance for later use within call_wsgi
+        start_response._send_headers_if_needed = _send_headers_if_needed  # type: ignore[attr-defined]
+        start_response._response_buffer = response_buffer  # type: ignore[attr-defined]
+        start_response._header_sent = header_sent  # type: ignore[attr-defined]
+        return start_response
+
+    def _send_data_with_flow_control(
+        self, stream_id: int, data: bytes, *, end_stream: bool
+    ) -> None:
+        idx = 0
+        while idx < len(data) or (len(data) == 0 and end_stream):
+            window = min(
+                self.c.local_flow_control_window(stream_id),
+                self.c.max_outbound_frame_size,
+            )
+            if window <= 0:
+                # Wait for window update by reading peer frames
+                self._recv_and_handle_events(block_until_window_for=stream_id)
+                continue
+
+            to_send = data[idx : idx + window]
+            idx += len(to_send)
+            # Only mark end_stream if this is the last piece
+            self.c.send_data(stream_id, to_send, end_stream=end_stream and idx >= len(data))
+            self._send_outbound()
+            if len(to_send) == 0:
+                # End stream with empty data
+                break
+
+    def _recv_and_handle_events(self, *, block_until_window_for: int | None = None) -> None:
+        # Minimal event handling to advance flow control; does not process new requests here.
+        data = self.s.recv(65535)
+        if not data:
+            raise ConnectionClosed
+        for event in self.c.receive_data(data):
+            debug_logger.debug("[h2] recv event from %s:%d: %r", *self.peername, event)
+            if isinstance(event, h2.events.DataReceived):
+                # Acknowledge any inbound data to release connection window
+                self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
+            # Send any pending ACKs or settings
+        self._send_outbound()
+
+    def call_wsgi_on_stream(
+        self, wsgi_app: WSGIApp, stream_id: int, headers: list[tuple[bytes, bytes]]
+    ) -> None:
+        # Build environ and set wsgi.input to read from this stream lazily.
+        # We will read Data frames synchronously from the connection as the app requests body.
+        pending_eom = {"value": False}
+
+        def receive_body() -> bytes:
+            if pending_eom["value"]:
+                return b""
+            # Read events until we get data or end of stream for this stream
+            while True:
+                data = self.s.recv(65535)
+                if not data:
+                    pending_eom["value"] = True
+                    return b""
+                for event in self.c.receive_data(data):
+                    debug_logger.debug(
+                        "[h2] recv body event from %s:%d: %r", *self.peername, event
+                    )
+                    if isinstance(event, h2.events.DataReceived) and event.stream_id == stream_id:
+                        self.c.acknowledge_received_data(
+                            event.flow_controlled_length, event.stream_id
+                        )
+                        self._send_outbound()
+                        return event.data
+                    if isinstance(event, h2.events.StreamEnded) and event.stream_id == stream_id:
+                        pending_eom["value"] = True
+                        self._send_outbound()
+                        return b""
+                self._send_outbound()
+
+        environ = self._build_environ(headers)
+        environ["wsgi.input"] = Input(receive_body)
+
+        start_response = self._start_response_factory(stream_id)
+        iterable = None
+        status_code = 500
+
+        try:
+            iterable = wsgi_app(environ, start_response)
+            iterator = iter(iterable)
+
+            # Ensure headers are sent before body
+            start_response._send_headers_if_needed()  # type: ignore[attr-defined]
+
+            try:
+                first_chunk = next(iterator)
+            except StopIteration:
+                first_chunk = b""
+
+            status_code = start_response._response_buffer["status"]  # type: ignore[attr-defined]
+            log_http(environ, int(status_code))
+
+            if first_chunk:
+                self._send_data_with_flow_control(stream_id, first_chunk, end_stream=False)
+
+            for chunk in iterator:
+                if not chunk:
+                    continue
+                self._send_data_with_flow_control(stream_id, chunk, end_stream=False)
+
+            # End stream
+            self._send_data_with_flow_control(stream_id, b"", end_stream=True)
+        except BaseException:
+            error_logger.exception("Error while calling WSGI application", exc_info=sys.exc_info())
+            # Send 500 if headers not sent
+            # Build minimal 500 response
+            headers = [(":status", "500"), ("content-type", "text/plain; charset=utf-8"), ("content-length", "21"), ("server", SERVER_NAME.decode("latin1"))]
+            try:
+                self.c.send_headers(stream_id, headers, end_stream=False)
+                self._send_data_with_flow_control(stream_id, b"Internal Server Error", end_stream=True)
+                self._send_outbound()
+            except Exception:
+                pass
+            log_http(environ, 500)
+            raise
+        finally:
+            close = getattr(iterable, "close", None)
+            if callable(close):
+                close()
+
+
+def http2_protocol(
+    app: WSGIApp,
+    sock: socket.socket,
+    graceful_exit: threading.Event,
+    *,
+    url_scheme: str = "http",
+    script_name: str = "",
+) -> None:
+    peername = sock.getpeername()
+    if isinstance(peername, str):
+        peername = (peername, 0)
+    else:
+        peername = peername[:2]
+    sockname = sock.getsockname()
+    if isinstance(sockname, str):
+        sockname = (sockname, 0)
+    else:
+        sockname = sockname[:2]
+
+    h = H2Protocol(
+        sock=sock,
+        peername=peername,
+        sockname=sockname,
+        graceful_exit=graceful_exit,
+        url_scheme=url_scheme,
+        script_name=script_name,
+    )
+
+    # Consume client preface and send our settings
+    h._discard_client_preface()
+    h.c.initiate_connection()
+    # Restrict to one concurrent stream to simplify processing
+    h.c.update_settings({SettingCodes.MAX_CONCURRENT_STREAMS: 1})
+    h._send_outbound()
+
+    while not graceful_exit.is_set():
+        try:
+            data = sock.recv(65535)
+            if not data:
+                raise ConnectionClosed
+            events = h.c.receive_data(data)
+            for event in events:
+                debug_logger.debug("[h2] recv event from %s:%d: %r", *h.peername, event)
+                if isinstance(event, h2.events.RequestReceived):
+                    # Serve this request synchronously on this connection
+                    h.call_wsgi_on_stream(app, event.stream_id, event.headers)  # type: ignore[arg-type]
+                elif isinstance(event, h2.events.ConnectionTerminated):
+                    raise ConnectionClosed
+                elif isinstance(event, h2.events.DataReceived):
+                    # If body arrives before we try to read it, ack to free window
+                    h.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
+                # Other events can be safely ignored for minimal server
+            h._send_outbound()
+        except (ConnectionClosed, ConnectionError, OSError):
+            debug_logger.debug("[h2] Connection closed by %s:%d", *h.peername)
+            break
+
