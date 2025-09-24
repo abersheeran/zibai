@@ -190,12 +190,28 @@ def handle_connection(
         try:
             connections.add(connection)
             # Protocol detection: HTTP/2 (h2c) preface vs HTTP/1.1
-            try:
-                preface_peek = connection.recv(len(H2_CLIENT_PREFACE), socket.MSG_PEEK)
-            except (BlockingIOError, TimeoutError, ConnectionError, OSError):
-                preface_peek = b""
+            # Try to detect h2c preface with a short wait window
+            is_h2c = False
+            import time as _time
 
-            if preface_peek == H2_CLIENT_PREFACE:
+            deadline = _time.monotonic() + 0.2
+            while _time.monotonic() < deadline:
+                try:
+                    peeked = connection.recv(
+                        len(H2_CLIENT_PREFACE), socket.MSG_PEEK
+                    )
+                except (BlockingIOError, TimeoutError, ConnectionError, OSError):
+                    peeked = b""
+                if not peeked:
+                    _time.sleep(0.01)
+                    continue
+                if H2_CLIENT_PREFACE.startswith(peeked):
+                    is_h2c = True
+                # We saw some bytes; stop probing
+                break
+
+            if is_h2c:
+                print('[core] using h2c for', address)
                 http2_protocol(
                     app,
                     connection,
@@ -204,6 +220,7 @@ def handle_connection(
                     script_name=script_name,
                 )
             else:
+                print('[core] using http/1.1 for', address)
                 http11_protocol(
                     app,
                     connection,

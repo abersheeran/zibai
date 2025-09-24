@@ -46,11 +46,14 @@ class H2Protocol:
             self.s.sendall(data)
 
     def _discard_client_preface(self) -> None:
-        # The client preface must be consumed by the server.
-        preface = self.s.recv(len(H2_CLIENT_PREFACE))
-        if preface != H2_CLIENT_PREFACE:
-            # If it doesn't match, raise to fallback logic.
-            raise ConnectionClosed
+        # Consume exactly the length of the HTTP/2 client preface.
+        need = len(H2_CLIENT_PREFACE)
+        received = 0
+        while received < need:
+            chunk = self.s.recv(need - received)
+            if not chunk:
+                raise ConnectionClosed
+            received += len(chunk)
 
     def _build_environ(self, headers: list[tuple[bytes, bytes]]) -> Environ:
         method = "GET"
@@ -201,7 +204,10 @@ class H2Protocol:
 
     def _recv_and_handle_events(self, *, block_until_window_for: int | None = None) -> None:
         # Minimal event handling to advance flow control; does not process new requests here.
-        data = self.s.recv(65535)
+        try:
+            data = self.s.recv(65535)
+        except socket.timeout:
+            return
         if not data:
             raise ConnectionClosed
         for event in self.c.receive_data(data):
@@ -213,44 +219,61 @@ class H2Protocol:
         self._send_outbound()
 
     def call_wsgi_on_stream(
-        self, wsgi_app: WSGIApp, stream_id: int, headers: list[tuple[bytes, bytes]]
+        self,
+        wsgi_app: WSGIApp,
+        stream_id: int,
+        headers: list[tuple[bytes, bytes]],
+        *,
+        initial_events: list[Any] | None = None,
     ) -> None:
-        # Build environ and set wsgi.input to read from this stream lazily.
-        # We will read Data frames synchronously from the connection as the app requests body.
-        pending_eom = {"value": False}
+        # Read the entire request body for this stream before invoking WSGI.
+        body_chunks: list[bytes] = []
+
+        def consume_events(evts: list[Any]) -> bool:
+            ended = False
+            for event in evts:
+                debug_logger.debug("[h2] body pre-consume event: %r", event)
+                if isinstance(event, h2.events.DataReceived) and event.stream_id == stream_id:
+                    body_chunks.append(event.data)
+                    self.c.acknowledge_received_data(
+                        event.flow_controlled_length, event.stream_id
+                    )
+                if isinstance(event, h2.events.StreamEnded) and event.stream_id == stream_id:
+                    ended = True
+            self._send_outbound()
+            return ended
+
+        if initial_events:
+            ended = consume_events(initial_events)
+            initial_events = []
+        else:
+            ended = False
+        while not ended:
+            try:
+                data = self.s.recv(65535)
+            except socket.timeout:
+                continue
+            if not data:
+                break
+            events = self.c.receive_data(data)
+            ended = consume_events(events)
+
+        # Build environ with a static input source
+        environ = self._build_environ(headers)
+
+        buffer = bytearray(b"".join(body_chunks))
 
         def receive_body() -> bytes:
-            if pending_eom["value"]:
+            if not buffer:
                 return b""
-            # Read events until we get data or end of stream for this stream
-            while True:
-                data = self.s.recv(65535)
-                if not data:
-                    pending_eom["value"] = True
-                    return b""
-                for event in self.c.receive_data(data):
-                    debug_logger.debug(
-                        "[h2] recv body event from %s:%d: %r", *self.peername, event
-                    )
-                    if isinstance(event, h2.events.DataReceived) and event.stream_id == stream_id:
-                        self.c.acknowledge_received_data(
-                            event.flow_controlled_length, event.stream_id
-                        )
-                        self._send_outbound()
-                        return event.data
-                    if isinstance(event, h2.events.StreamEnded) and event.stream_id == stream_id:
-                        pending_eom["value"] = True
-                        self._send_outbound()
-                        return b""
-                self._send_outbound()
+            data = bytes(buffer)
+            buffer.clear()
+            return data
 
-        environ = self._build_environ(headers)
         environ["wsgi.input"] = Input(receive_body)
 
         start_response = self._start_response_factory(stream_id)
         iterable = None
-        status_code = 500
-
         try:
             iterable = wsgi_app(environ, start_response)
             iterator = iter(iterable)
@@ -279,8 +302,12 @@ class H2Protocol:
         except BaseException:
             error_logger.exception("Error while calling WSGI application", exc_info=sys.exc_info())
             # Send 500 if headers not sent
-            # Build minimal 500 response
-            headers = [(":status", "500"), ("content-type", "text/plain; charset=utf-8"), ("content-length", "21"), ("server", SERVER_NAME.decode("latin1"))]
+            headers = [
+                (":status", "500"),
+                ("content-type", "text/plain; charset=utf-8"),
+                ("content-length", "21"),
+                ("server", SERVER_NAME.decode("latin1")),
+            ]
             try:
                 self.c.send_headers(stream_id, headers, end_stream=False)
                 self._send_data_with_flow_control(stream_id, b"Internal Server Error", end_stream=True)
@@ -330,25 +357,38 @@ def http2_protocol(
     h.c.update_settings({SettingCodes.MAX_CONCURRENT_STREAMS: 1})
     h._send_outbound()
 
+    sock.settimeout(1)
     while not graceful_exit.is_set():
         try:
             data = sock.recv(65535)
             if not data:
                 raise ConnectionClosed
             events = h.c.receive_data(data)
-            for event in events:
+            i = 0
+            while i < len(events):
+                event = events[i]
                 debug_logger.debug("[h2] recv event from %s:%d: %r", *h.peername, event)
                 if isinstance(event, h2.events.RequestReceived):
-                    # Serve this request synchronously on this connection
-                    h.call_wsgi_on_stream(app, event.stream_id, event.headers)  # type: ignore[arg-type]
+                    # Collect any remaining events from this batch for this stream
+                    remaining = events[i + 1 :]
+                    h.call_wsgi_on_stream(app, event.stream_id, event.headers, initial_events=remaining)  # type: ignore[arg-type]
+                    break
                 elif isinstance(event, h2.events.ConnectionTerminated):
                     raise ConnectionClosed
                 elif isinstance(event, h2.events.DataReceived):
                     # If body arrives before we try to read it, ack to free window
                     h.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
                 # Other events can be safely ignored for minimal server
+                i += 1
             h._send_outbound()
+        except socket.timeout:
+            continue
         except (ConnectionClosed, ConnectionError, OSError):
             debug_logger.debug("[h2] Connection closed by %s:%d", *h.peername)
+            break
+        except Exception:  # pragma: no cover
+            import traceback
+
+            traceback.print_exc()
             break
 
