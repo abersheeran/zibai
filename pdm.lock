@@ -5,7 +5,7 @@
 groups = ["default", "benchmark", "gevent", "reload", "test"]
 strategy = ["cross_platform"]
 lock_version = "4.5.0"
-content_hash = "sha256:b01b8f07472d815ed30233c2884b231bf3d15f3412d15960e6f125667e430a87"
+content_hash = "sha256:4080c15fa0064b5b6d5c68c275317154daed8e8971f463e8b605be384b2af3e7"
 
 [[metadata.targets]]
 requires_python = ">=3.10"
@@ -366,6 +366,19 @@ dependencies = [
 files = [
     {file = "pytest-cov-4.1.0.tar.gz", hash = "sha256:3904b13dfbfec47f003b8e77fd5b589cd11904a21ddf1ab38a64f204d6a10ef6"},
     {file = "pytest_cov-4.1.0-py3-none-any.whl", hash = "sha256:6ba70b9e97e69fcc3fb45bfeab2d0a138fb65c4d0d6a41ef33983ad114be8c3a"},
+]
+
+[[package]]
+name = "pytest-timeout"
+version = "2.4.0"
+requires_python = ">=3.7"
+summary = "pytest plugin to abort hanging tests"
+dependencies = [
+    "pytest>=7.0.0",
+]
+files = [
+    {file = "pytest_timeout-2.4.0-py3-none-any.whl", hash = "sha256:c42667e5cdadb151aeb5b26d114aff6bdf5a907f176a007a30b940d3d865b5c2"},
+    {file = "pytest_timeout-2.4.0.tar.gz", hash = "sha256:7e68e90b01f9eff71332b25001f85c75495fc4e3a836701876183c4bcfd0540a"},
 ]
 
 [[package]]
