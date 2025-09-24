@@ -259,19 +259,24 @@ class H2Protocol:
                 try:
                     data = self.s.recv(65535)
                 except socket.timeout:
-                    return b""
+                    continue
                 if not data:
                     pending_eom["value"] = True
                     return b""
-                for event in self.c.receive_data(data):
+                events = self.c.receive_data(data)
+                for event in events:
                     if isinstance(event, h2.events.DataReceived) and event.stream_id == stream_id:
+                        data_buffer.extend(event.data)
                         self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
-                        self._send_outbound()
-                        return event.data
                     if isinstance(event, h2.events.StreamEnded) and event.stream_id == stream_id:
                         pending_eom["value"] = True
-                        self._send_outbound()
-                        return b""
+                self._send_outbound()
+                if data_buffer:
+                    chunk = bytes(data_buffer)
+                    data_buffer.clear()
+                    return chunk
+                if pending_eom["value"]:
+                    return b""
                 self._send_outbound()
 
         environ = self._build_environ(headers)

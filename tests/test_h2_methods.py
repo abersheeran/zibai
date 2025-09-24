@@ -29,8 +29,7 @@ def method_app(environ, start_response):
         for chunk in environ["wsgi.input"]:
             if chunk:
                 yield chunk
-            else:
-                return
+        return
     start_response("405 Method Not Allowed", [("Content-Length", "0")])
     return [b""]
 

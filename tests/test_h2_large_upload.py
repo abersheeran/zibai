@@ -11,11 +11,8 @@ from zibai.core import serve
 
 def sink_app(environ, start_response):
     # Consume all bytes, then respond with length via header
-    total = 0
-    for chunk in environ["wsgi.input"]:
-        if not chunk:
-            break
-        total += len(chunk)
+    body = environ["wsgi.input"].read()
+    total = len(body)
     start_response("200 OK", [("X-Total-Length", str(total)), ("Content-Length", "0")])
     return [b""]
 
@@ -59,7 +56,8 @@ def test_h2c_large_upload(socket_and_event):
                 events = conn.receive_data(data)
                 client_socket.sendall(conn.data_to_send())
                 continue
-            to_send = chunk[:window]
+            remaining = size - sent
+            to_send = chunk[: min(window, remaining)]
             conn.send_data(stream_id, to_send, end_stream=False)
             client_socket.sendall(conn.data_to_send())
             sent += len(to_send)
