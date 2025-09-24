@@ -6,6 +6,7 @@ from typing import Any, Callable
 import h2.connection
 import h2.events
 from h2.settings import SettingCodes
+from h2.config import H2Configuration
 
 from .const import SERVER_NAME
 from .logger import debug_logger, error_logger, log_http
@@ -38,22 +39,14 @@ class H2Protocol:
         self.url_scheme = url_scheme
         self.script_name = script_name
 
-        self.c = h2.connection.H2Connection(client_side=False)
+        self.c = h2.connection.H2Connection(config=H2Configuration(client_side=False))
 
     def _send_outbound(self) -> None:
         data = self.c.data_to_send()
         if data:
             self.s.sendall(data)
 
-    def _discard_client_preface(self) -> None:
-        # Consume exactly the length of the HTTP/2 client preface.
-        need = len(H2_CLIENT_PREFACE)
-        received = 0
-        while received < need:
-            chunk = self.s.recv(need - received)
-            if not chunk:
-                raise ConnectionClosed
-            received += len(chunk)
+    # No explicit preface discard: pass the preface to h2 via receive_data
 
     def _build_environ(self, headers: list[tuple[bytes, bytes]]) -> Environ:
         method = "GET"
@@ -148,9 +141,11 @@ class H2Protocol:
                 raise RuntimeError(f"Invalid status: {status}")
             response_buffer["status"] = int(status_code_str)
 
-            # Normalize headers to lowercase, add server
-            norm_headers = [(k.lower(), v) for k, v in headers]
-            norm_headers.append(("server", SERVER_NAME.decode("latin1")))
+            # Normalize headers to lowercase, encode to bytes, add server
+            norm_headers = [
+                (k.lower().encode("latin1"), v.encode("latin1")) for k, v in headers
+            ]
+            norm_headers.append((b"server", SERVER_NAME))
             response_buffer["headers"] = norm_headers
 
             def write(chunk: bytes) -> None:
@@ -163,10 +158,10 @@ class H2Protocol:
             if header_sent["value"]:
                 return
             # Build HTTP/2 headers
-            headers = [(":status", str(response_buffer["status"]))]
+            headers = [(b":status", str(response_buffer["status"]).encode("ascii"))]
             for k, v in response_buffer["headers"]:
                 # Exclude hop-by-hop headers automatically ignored in h2
-                if k.lower() in {"connection", "transfer-encoding"}:
+                if k in {b"connection", b"transfer-encoding"}:
                     continue
                 headers.append((k, v))
             self.c.send_headers(stream_id, headers, end_stream=False)
@@ -303,10 +298,10 @@ class H2Protocol:
             error_logger.exception("Error while calling WSGI application", exc_info=sys.exc_info())
             # Send 500 if headers not sent
             headers = [
-                (":status", "500"),
-                ("content-type", "text/plain; charset=utf-8"),
-                ("content-length", "21"),
-                ("server", SERVER_NAME.decode("latin1")),
+                (b":status", b"500"),
+                (b"content-type", b"text/plain; charset=utf-8"),
+                (b"content-length", b"21"),
+                (b"server", SERVER_NAME),
             ]
             try:
                 self.c.send_headers(stream_id, headers, end_stream=False)
@@ -330,28 +325,33 @@ def http2_protocol(
     url_scheme: str = "http",
     script_name: str = "",
 ) -> None:
-    peername = sock.getpeername()
-    if isinstance(peername, str):
-        peername = (peername, 0)
-    else:
-        peername = peername[:2]
-    sockname = sock.getsockname()
-    if isinstance(sockname, str):
-        sockname = (sockname, 0)
-    else:
-        sockname = sockname[:2]
+    # Enter HTTP/2 (h2c) handler
+    try:
+        peername = sock.getpeername()
+        if isinstance(peername, str):
+            peername = (peername, 0)
+        else:
+            peername = peername[:2]
+        sockname = sock.getsockname()
+        if isinstance(sockname, str):
+            sockname = (sockname, 0)
+        else:
+            sockname = sockname[:2]
 
-    h = H2Protocol(
-        sock=sock,
-        peername=peername,
-        sockname=sockname,
-        graceful_exit=graceful_exit,
-        url_scheme=url_scheme,
-        script_name=script_name,
-    )
+        h = H2Protocol(
+            sock=sock,
+            peername=peername,
+            sockname=sockname,
+            graceful_exit=graceful_exit,
+            url_scheme=url_scheme,
+            script_name=script_name,
+        )
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return
 
-    # Consume client preface and send our settings
-    h._discard_client_preface()
+    # Send our initial SETTINGS; we'll pass the client's preface to receive_data
     h.c.initiate_connection()
     # Restrict to one concurrent stream to simplify processing
     h.c.update_settings({SettingCodes.MAX_CONCURRENT_STREAMS: 1})
