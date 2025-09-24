@@ -71,3 +71,7 @@ exclude_lines = [
 ]
 show_missing = true
 skip_covered = true
+
+[tool.pytest.ini_options]
+timeout = 300
+timeout_method = "thread"
