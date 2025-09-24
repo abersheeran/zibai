@@ -90,8 +90,11 @@ def test_h2c_hello_world(
             for event in events:
                 if isinstance(event, h2.events.ResponseReceived):
                     for n, v in event.headers:
-                        if n == ":status":
-                            status = int(v)
+                        if n in (":status", b":status"):
+                            if isinstance(v, bytes):
+                                status = int(v.decode("ascii"))
+                            else:
+                                status = int(v)
                 if isinstance(event, h2.events.DataReceived):
                     body += event.data
                     conn.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
@@ -176,8 +179,11 @@ def test_h2c_post_echo(socket_and_event: tuple[socket.socket, threading.Event]) 
             for event in events:
                 if isinstance(event, h2.events.ResponseReceived):
                     for n, v in event.headers:
-                        if n == ":status":
-                            status = int(v)
+                        if n in (":status", b":status"):
+                            if isinstance(v, bytes):
+                                status = int(v.decode("ascii"))
+                            else:
+                                status = int(v)
                 if isinstance(event, h2.events.DataReceived):
                     received += event.data
                     conn.acknowledge_received_data(event.flow_controlled_length, event.stream_id)

@@ -164,6 +164,8 @@ class H2Protocol:
                 if k in {b"connection", b"transfer-encoding"}:
                     continue
                 headers.append((k, v))
+            # debug
+            print('[h2] sending headers', headers)
             self.c.send_headers(stream_id, headers, end_stream=False)
             header_sent["value"] = True
             self._send_outbound()
@@ -221,50 +223,50 @@ class H2Protocol:
         *,
         initial_events: list[Any] | None = None,
     ) -> None:
-        # Read the entire request body for this stream before invoking WSGI.
-        body_chunks: list[bytes] = []
+        # Lazily read request body when the app asks for it
+        pending_eom = {"value": False}
 
-        def consume_events(evts: list[Any]) -> bool:
-            ended = False
+        def prime_events(evts: list[Any]) -> None:
             for event in evts:
-                debug_logger.debug("[h2] body pre-consume event: %r", event)
                 if isinstance(event, h2.events.DataReceived) and event.stream_id == stream_id:
-                    body_chunks.append(event.data)
-                    self.c.acknowledge_received_data(
-                        event.flow_controlled_length, event.stream_id
-                    )
+                    # Stash into a simple buffer the next call will use
+                    data_buffer.extend(event.data)
+                    self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
                 if isinstance(event, h2.events.StreamEnded) and event.stream_id == stream_id:
-                    ended = True
+                    pending_eom["value"] = True
             self._send_outbound()
-            return ended
 
+        data_buffer = bytearray()
         if initial_events:
-            ended = consume_events(initial_events)
-            initial_events = []
-        else:
-            ended = False
-        while not ended:
-            try:
-                data = self.s.recv(65535)
-            except socket.timeout:
-                continue
-            if not data:
-                break
-            events = self.c.receive_data(data)
-            ended = consume_events(events)
-
-        # Build environ with a static input source
-        environ = self._build_environ(headers)
-
-        buffer = bytearray(b"".join(body_chunks))
+            prime_events(initial_events)
 
         def receive_body() -> bytes:
-            if not buffer:
+            if pending_eom["value"] and not data_buffer:
                 return b""
-            data = bytes(buffer)
-            buffer.clear()
-            return data
+            if data_buffer:
+                chunk = bytes(data_buffer)
+                data_buffer.clear()
+                return chunk
+            while True:
+                try:
+                    data = self.s.recv(65535)
+                except socket.timeout:
+                    return b""
+                if not data:
+                    pending_eom["value"] = True
+                    return b""
+                for event in self.c.receive_data(data):
+                    if isinstance(event, h2.events.DataReceived) and event.stream_id == stream_id:
+                        self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
+                        self._send_outbound()
+                        return event.data
+                    if isinstance(event, h2.events.StreamEnded) and event.stream_id == stream_id:
+                        pending_eom["value"] = True
+                        self._send_outbound()
+                        return b""
+                self._send_outbound()
 
+        environ = self._build_environ(headers)
         environ["wsgi.input"] = Input(receive_body)
 
         start_response = self._start_response_factory(stream_id)
@@ -273,26 +275,29 @@ class H2Protocol:
             iterable = wsgi_app(environ, start_response)
             iterator = iter(iterable)
 
-            # Ensure headers are sent before body
-            start_response._send_headers_if_needed()  # type: ignore[attr-defined]
-
             try:
                 first_chunk = next(iterator)
             except StopIteration:
                 first_chunk = b""
 
+            # Ensure headers are sent after start_response is called by the app
+            start_response._send_headers_if_needed()  # type: ignore[attr-defined]
+
             status_code = start_response._response_buffer["status"]  # type: ignore[attr-defined]
             log_http(environ, int(status_code))
 
             if first_chunk:
+                print('[h2] sending first chunk', len(first_chunk))
                 self._send_data_with_flow_control(stream_id, first_chunk, end_stream=False)
 
             for chunk in iterator:
                 if not chunk:
                     continue
+                print('[h2] sending chunk', len(chunk))
                 self._send_data_with_flow_control(stream_id, chunk, end_stream=False)
 
             # End stream
+            print('[h2] end stream')
             self._send_data_with_flow_control(stream_id, b"", end_stream=True)
         except BaseException:
             error_logger.exception("Error while calling WSGI application", exc_info=sys.exc_info())
@@ -364,11 +369,13 @@ def http2_protocol(
             if not data:
                 raise ConnectionClosed
             events = h.c.receive_data(data)
+            print('[h2] got events:', [e.__class__.__name__ for e in events])
             i = 0
             while i < len(events):
                 event = events[i]
                 debug_logger.debug("[h2] recv event from %s:%d: %r", *h.peername, event)
                 if isinstance(event, h2.events.RequestReceived):
+                    print('[h2] RequestReceived, stream', event.stream_id)
                     # Collect any remaining events from this batch for this stream
                     remaining = events[i + 1 :]
                     h.call_wsgi_on_stream(app, event.stream_id, event.headers, initial_events=remaining)  # type: ignore[arg-type]
