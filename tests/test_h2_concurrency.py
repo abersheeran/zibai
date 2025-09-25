@@ -10,11 +10,12 @@ from zibai.core import serve
 
 def streaming_echo_app(environ, start_response):
     start_response("200 OK", [])
-    for chunk in environ["wsgi.input"]:
-        if chunk:
-            yield chunk
-        else:
-            return
+    input_stream = environ["wsgi.input"]
+    while True:
+        data = input_stream.read(64 * 1024)
+        if not data:
+            break
+        yield data
 
 
 def test_h2c_concurrent_streams(socket_and_event):
