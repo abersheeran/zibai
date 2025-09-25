@@ -190,25 +190,15 @@ def handle_connection(
         try:
             connections.add(connection)
             # Protocol detection: HTTP/2 (h2c) preface vs HTTP/1.1
-            # Try to detect h2c preface with a short wait window
+            # Do a single peek respecting socket timeout; decide based on prefix
             is_h2c = False
-            import time as _time
-
-            deadline = _time.monotonic() + 0.2
-            while _time.monotonic() < deadline:
-                try:
-                    peeked = connection.recv(
-                        len(H2_CLIENT_PREFACE), socket.MSG_PEEK
-                    )
-                except (BlockingIOError, TimeoutError, ConnectionError, OSError):
-                    peeked = b""
-                if not peeked:
-                    _time.sleep(0.01)
-                    continue
-                if H2_CLIENT_PREFACE.startswith(peeked):
-                    is_h2c = True
-                # We saw some bytes; stop probing
-                break
+            try:
+                peeked = connection.recv(len(H2_CLIENT_PREFACE), socket.MSG_PEEK)
+            except (BlockingIOError, TimeoutError, ConnectionError, OSError, socket.timeout):
+                peeked = b""
+            # If we see the beginning of the HTTP/2 preface ("PRI "), or a full match, treat as h2c
+            if peeked and (peeked.startswith(H2_CLIENT_PREFACE) or H2_CLIENT_PREFACE.startswith(peeked) or peeked.startswith(b"PRI ")):
+                is_h2c = True
 
             if is_h2c:
                 debug_logger.debug("[core] using h2c for %r", address)
