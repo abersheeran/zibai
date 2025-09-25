@@ -211,7 +211,7 @@ def handle_connection(
                 break
 
             if is_h2c:
-                print('[core] using h2c for', address)
+                debug_logger.debug("[core] using h2c for %r", address)
                 http2_protocol(
                     app,
                     connection,
@@ -220,7 +220,7 @@ def handle_connection(
                     script_name=script_name,
                 )
             else:
-                print('[core] using http/1.1 for', address)
+                debug_logger.debug("[core] using http/1.1 for %r", address)
                 http11_protocol(
                     app,
                     connection,

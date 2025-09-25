@@ -167,7 +167,7 @@ class H2Protocol:
                     continue
                 headers.append((k, v))
             # debug
-            print('[h2] sending headers', headers)
+            debug_logger.debug("[h2] sending headers: %r", headers)
             with self.send_lock:
                 self.c.send_headers(stream_id, headers, end_stream=False)
                 data_to_send = self.c.data_to_send()
@@ -300,17 +300,17 @@ class H2Protocol:
             log_http(environ, int(status_code))
 
             if first_chunk:
-                print('[h2] sending first chunk', len(first_chunk))
+                debug_logger.debug("[h2] sending first chunk: %d", len(first_chunk))
                 self._send_data_with_flow_control(stream_id, first_chunk, end_stream=False)
 
             for chunk in iterator:
                 if not chunk:
                     continue
-                print('[h2] sending chunk', len(chunk))
+                debug_logger.debug("[h2] sending chunk: %d", len(chunk))
                 self._send_data_with_flow_control(stream_id, chunk, end_stream=False)
 
             # End stream
-            print('[h2] end stream')
+            debug_logger.debug("[h2] end stream")
             self._send_data_with_flow_control(stream_id, b"", end_stream=True)
         except BaseException:
             error_logger.exception("Error while calling WSGI application", exc_info=sys.exc_info())
