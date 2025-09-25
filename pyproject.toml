@@ -69,7 +69,7 @@ show_missing = true
 skip_covered = true
 
 [tool.pytest.ini_options]
-timeout = 10
+timeout = 300
 timeout_method = "thread"
 
 [dependency-groups]

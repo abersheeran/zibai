@@ -120,7 +120,7 @@ class H2Protocol:
         environ["PATH_INFO"] = path_info
         environ["QUERY_STRING"] = query
 
-        return environ  # type: ignore
+        return environ
 
     def _start_response_factory(
         self, stream_id: int
