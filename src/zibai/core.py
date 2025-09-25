@@ -105,7 +105,7 @@ def serve(
     before_serve_hook: Callable[[], None] = lambda: None,
     before_graceful_exit_hook: Callable[[], None] = lambda: None,
     before_died_hook: Callable[[], None] = lambda: None,
-    socket_timeout: float = 5,
+    keepalive_timeout: float = 5,
 ) -> None:
     """
     Serve a WSGI application.
@@ -158,7 +158,7 @@ def serve(
                         connection,
                         address,
                         graceful_exit,
-                        socket_timeout,
+                        keepalive_timeout,
                         connections,
                         url_scheme=url_scheme,
                         script_name=script_name,
@@ -178,13 +178,14 @@ def handle_connection(
     connection: socket.socket,
     address: tuple[str, int],
     graceful_exit: threading.Event,
-    socket_timeout: float,
+    keepalive_timeout: float,
     connections: set[socket.socket],
     *,
     url_scheme: str = "http",
     script_name: str = "",
 ) -> None:
-    connection.settimeout(socket_timeout)
+    # Keepalive timeout: maximum idle wait per blocking recv on this connection
+    connection.settimeout(keepalive_timeout)
     debug_logger.debug("Handling connection from %s:%d", *address[:2])
     with connection:
         try:
