@@ -41,6 +41,8 @@ class H2Protocol:
 
         self.c = h2.connection.H2Connection(config=H2Configuration(client_side=False))
         self.send_lock = threading.Lock()
+        self._pending_events: dict[int, list[Any]] = {}
+        self._pending_lock = threading.Lock()
 
     def _send_outbound(self) -> None:
         with self.send_lock:
@@ -220,6 +222,8 @@ class H2Protocol:
             if isinstance(event, h2.events.DataReceived):
                 # Acknowledge any inbound data to release connection window
                 self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
+                with self._pending_lock:
+                    self._pending_events.setdefault(event.stream_id, []).append(event)
             # Send any pending ACKs or settings
         self._send_outbound()
 
@@ -249,6 +253,14 @@ class H2Protocol:
             prime_events(initial_events)
 
         def receive_body() -> bytes:
+            with self._pending_lock:
+                pending = self._pending_events.pop(stream_id, [])
+            if pending:
+                prime_events(pending)
+                if data_buffer:
+                    chunk0 = bytes(data_buffer)
+                    data_buffer.clear()
+                    return chunk0
             if pending_eom["value"] and not data_buffer:
                 return b""
             if data_buffer:
@@ -268,6 +280,11 @@ class H2Protocol:
                     if isinstance(event, h2.events.DataReceived) and event.stream_id == stream_id:
                         data_buffer.extend(event.data)
                         self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
+                    elif isinstance(event, h2.events.DataReceived):
+                        # queue data for other streams
+                        self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
+                        with self._pending_lock:
+                            self._pending_events.setdefault(event.stream_id, []).append(event)
                     if isinstance(event, h2.events.StreamEnded) and event.stream_id == stream_id:
                         pending_eom["value"] = True
                 self._send_outbound()
@@ -371,8 +388,8 @@ def http2_protocol(
 
     # Send our initial SETTINGS; we'll pass the client's preface to receive_data
     h.c.initiate_connection()
-    # Restrict to one concurrent stream to simplify processing
-    h.c.update_settings({SettingCodes.MAX_CONCURRENT_STREAMS: 1})
+    # Allow multiple concurrent inbound streams for a single TCP connection
+    h.c.update_settings({SettingCodes.MAX_CONCURRENT_STREAMS: 100})
     h._send_outbound()
 
     sock.settimeout(1)
