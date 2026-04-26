@@ -28,7 +28,7 @@ class Options:
     watchfiles: str | None = None
 
     backlog: int | None = None
-    socket_timeout: float = 5
+    keepalive_timeout: float = 5
     dualstack_ipv6: bool = False
     unix_socket_perms: int = 0o600
     h11_max_incomplete_event_size: int | None = None
@@ -252,11 +252,20 @@ def parse_args(args: Sequence[str]) -> Options:
         help="listen backlog",
         required=False,
     )
+    # Prefer keepalive-timeout; keep legacy --socket-timeout for backward compatibility
+    parser.add_argument(
+        "--keepalive-timeout",
+        type=float,
+        help="keepalive timeout (seconds) for idle connections",
+        required=False,
+        dest="keepalive_timeout",
+    )
     parser.add_argument(
         "--socket-timeout",
         type=float,
-        help="socket timeout (other means keepalive timeout)",
+        help="[deprecated] alias of --keepalive-timeout",
         required=False,
+        dest="keepalive_timeout",
     )
     parser.add_argument(
         "--dualstack-ipv6",
@@ -427,5 +436,5 @@ def main(options: Options, *, is_main: bool = True) -> None:
         before_serve_hook=options.get_before_serve_hook(),
         before_graceful_exit_hook=options.get_before_graceful_exit_hook(),
         before_died_hook=options.get_before_died_hook(),
-        socket_timeout=options.socket_timeout,
+        keepalive_timeout=options.keepalive_timeout,
     )

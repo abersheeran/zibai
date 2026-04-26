@@ -11,6 +11,7 @@ from typing import Any, Callable, Generator, Protocol
 from typing import cast as typing_cast
 
 from .h11 import http11_protocol
+from .h2 import H2_CLIENT_PREFACE, http2_protocol
 from .logger import debug_logger, logger
 from .utils import unicode_to_wsgi
 from .wsgi_typing import WSGIApp
@@ -104,7 +105,7 @@ def serve(
     before_serve_hook: Callable[[], None] = lambda: None,
     before_graceful_exit_hook: Callable[[], None] = lambda: None,
     before_died_hook: Callable[[], None] = lambda: None,
-    socket_timeout: float = 5,
+    keepalive_timeout: float = 5,
 ) -> None:
     """
     Serve a WSGI application.
@@ -157,7 +158,7 @@ def serve(
                         connection,
                         address,
                         graceful_exit,
-                        socket_timeout,
+                        keepalive_timeout,
                         connections,
                         url_scheme=url_scheme,
                         script_name=script_name,
@@ -177,25 +178,41 @@ def handle_connection(
     connection: socket.socket,
     address: tuple[str, int],
     graceful_exit: threading.Event,
-    socket_timeout: float,
+    keepalive_timeout: float,
     connections: set[socket.socket],
     *,
     url_scheme: str = "http",
     script_name: str = "",
 ) -> None:
-    connection.settimeout(socket_timeout)
+    # Keepalive timeout: maximum idle wait per blocking recv on this connection
+    connection.settimeout(keepalive_timeout)
     debug_logger.debug("Handling connection from %s:%d", *address[:2])
     with connection:
         try:
             connections.add(connection)
 
-            http11_protocol(
-                app,
-                connection,
-                graceful_exit,
-                url_scheme=url_scheme,
-                script_name=script_name,
-            )
+            # Protocol detection: HTTP/2 (h2c) preface vs HTTP/1.1
+            peeked = connection.recv(len(H2_CLIENT_PREFACE), socket.MSG_PEEK)
+            is_h2c = peeked == H2_CLIENT_PREFACE
+
+            if is_h2c:
+                debug_logger.debug("[core] using h2c for %r", address)
+                http2_protocol(
+                    app,
+                    connection,
+                    graceful_exit,
+                    url_scheme=url_scheme,
+                    script_name=script_name,
+                )
+            else:
+                debug_logger.debug("[core] using http/1.1 for %r", address)
+                http11_protocol(
+                    app,
+                    connection,
+                    graceful_exit,
+                    url_scheme=url_scheme,
+                    script_name=script_name,
+                )
         except ConnectionError:
             pass  # client closed connection, nothing to do
         finally:

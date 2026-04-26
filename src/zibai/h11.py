@@ -58,7 +58,12 @@ class H11Protocol:
                     try:
                         self.c.receive_data(self.s.recv(MAX_INCOMPLETE_EVENT_SIZE))
                     except socket.timeout:
-                        pass
+                        # Keepalive timeout: if we're idle waiting for a new request,
+                        # close the connection to avoid spinning forever.
+                        if self.c.their_state is h11.IDLE:
+                            raise ConnectionClosed
+                        # If mid-request (e.g., waiting for body), continue waiting.
+                        continue
                 case h11.ConnectionClosed():
                     raise ConnectionClosed
                 case _:

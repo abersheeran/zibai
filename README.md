@@ -70,8 +70,8 @@ options:
   --watchfiles WATCHFILES
                         watch files for changes and restart workers (default: None)
   --backlog BACKLOG     listen backlog (default: None)
-  --socket-timeout SOCKET_TIMEOUT
-                        socket timeout (other means keepalive timeout) (default: None)
+  --keepalive-timeout KEEPALIVE_TIMEOUT
+                        keepalive timeout (seconds) for idle connections (default: None)
   --dualstack-ipv6      enable dualstack ipv6 (default: False)
   --unix-socket-perms UNIX_SOCKET_PERMS
                         unix socket permissions (default: 600)
